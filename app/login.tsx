@@ -3,7 +3,7 @@
  * Tela de autenticação com número de telemóvel e palavra-passe
  */
 
-import { ModalFeedback } from "@/components/ModalFeedback";
+import { Toast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Colors, FontSizes, Spacing } from "@/constants/theme";
@@ -13,14 +13,14 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, { useState } from "react";
 import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 export default function LoginScreen() {
@@ -31,23 +31,27 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Estados do Modal de Feedback
-  const [modalVisible, setModalVisible] = useState(false);
-  const [modalType, setModalType] = useState<"success" | "error">("success");
-  const [modalMessage, setModalMessage] = useState("");
+  // Estados do Toast
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastVariant, setToastVariant] = useState<"success" | "error">(
+    "success",
+  );
+  const [toastMessage, setToastMessage] = useState("");
+
+  const showToast = (variant: "success" | "error", message: string) => {
+    setToastVariant(variant);
+    setToastMessage(message);
+    setToastVisible(true);
+  };
 
   const handleLogin = async () => {
     // Validação básica
     if (!telemovel.trim()) {
-      setModalType("error");
-      setModalMessage("Por favor, insira o número de telemóvel.");
-      setModalVisible(true);
+      showToast("error", "Por favor, insira o número de telemóvel.");
       return;
     }
     if (!password.trim()) {
-      setModalType("error");
-      setModalMessage("Por favor, insira a palavra-passe.");
-      setModalVisible(true);
+      showToast("error", "Por favor, insira a palavra-passe.");
       return;
     }
 
@@ -79,9 +83,7 @@ export default function LoginScreen() {
       console.log("[LoginScreen] setUser chamado com id:", user.id);
 
       // Mostrar mensagem de sucesso
-      setModalType("success");
-      setModalMessage(`Bem-vindo, ${user.name}!`);
-      setModalVisible(true);
+      showToast("success", `Bem-vindo, ${user.name}!`);
 
       // Redirecionar após 2 segundos
       setTimeout(() => {
@@ -91,9 +93,7 @@ export default function LoginScreen() {
       // Tratamento de erros baseado no código HTTP
       const errorMessage =
         err.message || "Erro ao fazer login. Tente novamente.";
-      setModalType("error");
-      setModalMessage(errorMessage);
-      setModalVisible(true);
+      showToast("error", errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -163,20 +163,22 @@ export default function LoginScreen() {
             <Text style={styles.linkText}>Registe-se</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Link para voltar à Home */}
+        <TouchableOpacity
+          style={styles.backToHome}
+          onPress={() => router.replace("/(tabs)")}
+        >
+          <Text style={styles.backToHomeText}>Continuar sem conta</Text>
+        </TouchableOpacity>
       </ScrollView>
 
-      {/* Modal de Feedback */}
-      <ModalFeedback
-        visible={modalVisible}
-        variant={modalType}
-        message={modalMessage}
-        confirmText="OK"
-        onConfirm={() => {
-          setModalVisible(false);
-          if (modalType === "success") {
-            router.replace("/(tabs)");
-          }
-        }}
+      {/* Toast de Feedback */}
+      <Toast
+        visible={toastVisible}
+        variant={toastVariant}
+        message={toastMessage}
+        onHide={() => setToastVisible(false)}
       />
     </KeyboardAvoidingView>
   );
@@ -240,5 +242,14 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.primary,
     fontWeight: "600",
+  },
+  backToHome: {
+    alignItems: "center",
+    paddingBottom: Spacing.xl,
+  },
+  backToHomeText: {
+    fontSize: FontSizes.sm,
+    color: Colors.secondary,
+    textDecorationLine: "underline",
   },
 });

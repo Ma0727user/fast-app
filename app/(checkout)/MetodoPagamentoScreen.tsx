@@ -8,14 +8,15 @@ import { Button } from "@/components/ui/Button";
 import { Colors, FontSizes, formatPrice, Spacing } from "@/constants/theme";
 import { verificarPagamento } from "@/services/carrinhoService";
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -23,7 +24,7 @@ type TipoPagamento = "referencia" | "cartao";
 
 // Valores padrão quando não há dados
 const DADOS_DEFAULT = {
-  entidade: "012888",
+  entidade: "01068",
   referencia: "A gerar",
   total: 0,
   idPedido: 0,
@@ -41,6 +42,15 @@ export default function MetodoPagamentoScreen() {
     "sucesso",
   );
   const [loading, setLoading] = useState(false);
+  const [copiedField, setCopiedField] = useState<
+    "entidade" | "referencia" | null
+  >(null);
+
+  const copiar = async (valor: string, campo: "entidade" | "referencia") => {
+    await Clipboard.setStringAsync(valor);
+    setCopiedField(campo);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   // Dados recebidos da tela anterior
   const dadosPagamento = {
@@ -103,12 +113,7 @@ export default function MetodoPagamentoScreen() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -118,7 +123,16 @@ export default function MetodoPagamentoScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>PAGAMENTO</Text>
-        <View style={styles.placeholder} />
+        <TouchableOpacity
+          onPress={() => router.push("/(tabs)/NotificacoesScreen")}
+          style={styles.notificationButton}
+        >
+          <Ionicons
+            name="notifications-outline"
+            size={24}
+            color={Colors.primary}
+          />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -176,18 +190,60 @@ export default function MetodoPagamentoScreen() {
           {/* Dados da Referência (quando selecionado) */}
           {selectedMethod === "referencia" && (
             <View style={styles.referenciaCard}>
-              <View style={styles.referenciaRow}>
+              <TouchableOpacity
+                style={styles.referenciaRow}
+                onPress={() => copiar(dadosPagamento.entidade, "entidade")}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.referenciaLabel}>Entidade</Text>
-                <Text style={styles.referenciaValue}>
-                  {dadosPagamento.entidade}
-                </Text>
-              </View>
-              <View style={styles.referenciaRow}>
+                <View style={styles.copyRow}>
+                  <Text style={styles.referenciaValue}>
+                    {dadosPagamento.entidade}
+                  </Text>
+                  <Ionicons
+                    name={
+                      copiedField === "entidade"
+                        ? "checkmark-outline"
+                        : "copy-outline"
+                    }
+                    size={16}
+                    color={
+                      copiedField === "entidade"
+                        ? Colors.success || "#22c55e"
+                        : Colors.secondary
+                    }
+                    style={{ marginLeft: 6 }}
+                  />
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.referenciaRow}
+                onPress={() =>
+                  copiar(dadosPagamento.referenciaPagamento || "", "referencia")
+                }
+                activeOpacity={0.7}
+              >
                 <Text style={styles.referenciaLabel}>Referência</Text>
-                <Text style={styles.referenciaValue}>
-                  {dadosPagamento.referenciaPagamento || "A gerar"}
-                </Text>
-              </View>
+                <View style={styles.copyRow}>
+                  <Text style={styles.referenciaValue}>
+                    {dadosPagamento.referenciaPagamento || "A gerar"}
+                  </Text>
+                  <Ionicons
+                    name={
+                      copiedField === "referencia"
+                        ? "checkmark-outline"
+                        : "copy-outline"
+                    }
+                    size={16}
+                    color={
+                      copiedField === "referencia"
+                        ? Colors.success || "#22c55e"
+                        : Colors.secondary
+                    }
+                    style={{ marginLeft: 6 }}
+                  />
+                </View>
+              </TouchableOpacity>
               <View
                 style={[styles.referenciaRow, styles.referenciaRowHighlight]}
               >
@@ -200,8 +256,8 @@ export default function MetodoPagamentoScreen() {
           )}
         </View>
 
-        {/* Opção: Cartão Visa / Pagamento Internacional */}
-        <View style={styles.section}>
+        {/* Opção: Cartão Visa / Pagamento Internacional - oculto por enquanto */}
+        {/* <View style={styles.section}>
           <TouchableOpacity
             style={[
               styles.optionCard,
@@ -245,7 +301,6 @@ export default function MetodoPagamentoScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Informações do Cartão (quando selecionado) */}
           {selectedMethod === "cartao" && (
             <View style={styles.cartaoCard}>
               <Text style={styles.cartaoTitle}>Processamento</Text>
@@ -258,7 +313,7 @@ export default function MetodoPagamentoScreen() {
               </View>
             </View>
           )}
-        </View>
+        </View> */}
       </ScrollView>
 
       {/* Botão Fixo no Rodapé */}
@@ -305,6 +360,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
   },
   backButton: {
+    padding: Spacing.xs,
+  },
+  notificationButton: {
     padding: Spacing.xs,
   },
   title: {
@@ -415,6 +473,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
+  },
+  copyRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   referenciaLabel: {
     fontSize: FontSizes.sm,

@@ -5,24 +5,26 @@
 
 import { Button } from "@/components/ui/Button";
 import { Colors, FontSizes, formatPrice, Spacing } from "@/constants/theme";
+import { getStoreData } from "@/services/authService";
 import {
-  AuthError,
-  getPedido,
-  salvarCarrinho,
-  verificarPagamento,
+    AuthError,
+    getPedido,
+    salvarCarrinho,
+    verificarPagamento,
 } from "@/services/carrinhoService";
 import { useStore } from "@/store/useStore";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Alert,
-  Image,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    Image,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -34,7 +36,18 @@ export default function ResumoCompraScreen() {
   const user = useStore((state) => state.user);
   const clearCart = useStore((state) => state.clearCart);
   const [isLoading, setIsLoading] = useState(false);
+  const [ivaPercentagem, setIvaPercentagem] = useState<number>(0);
   const [pagamentoStatus, setPagamentoStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    getStoreData()
+      .then((loja) => {
+        if (loja?.iva_percentagem != null) {
+          setIvaPercentagem(loja.iva_percentagem);
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [referenciaPagamento, setReferenciaPagamento] = useState<string | null>(
     null,
   );
@@ -58,7 +71,8 @@ export default function ResumoCompraScreen() {
     (acc, item) => acc + item.price * item.quantity,
     0,
   );
-  const iva = Math.round(subtotal * 0.14);
+  const iva =
+    ivaPercentagem > 0 ? Math.round(subtotal * (ivaPercentagem / 100)) : 0;
   const taxaEntrega = dadosEntrega.taxaEntrega;
   const total = subtotal + iva + taxaEntrega;
 
@@ -100,7 +114,7 @@ export default function ResumoCompraScreen() {
       // Variáveis para armazenar os dados de pagamento
       let refPagamento = "";
       let idPedidoValue: string | number = "";
-      let entidadePagamento = "012888";
+      let entidadePagamento = "01068";
 
       // Verificar formato de resposta - novo formato ou formato antigo com data
       // Novo formato: { idPedido, referencia, status, message }
@@ -128,7 +142,7 @@ export default function ResumoCompraScreen() {
           result.data.referencia ||
           "";
         idPedidoValue = result.data.id_pedido || "";
-        entidadePagamento = result.data.pagamento.entidade || "012888";
+        entidadePagamento = result.data.pagamento.entidade || "01068";
         setReferenciaPagamento(refPagamento || null);
         setIdPedido(result.data.id_pedido || null);
         console.log("[ResumoCompra] Referência pagamento:", refPagamento);
@@ -164,7 +178,7 @@ export default function ResumoCompraScreen() {
       // Tratar erro de autenticação específico
       if (error instanceof AuthError) {
         Alert.alert("Sem autorização", "Faça login para continuar.");
-        router.push("/(auth)/LoginScreen");
+        router.push("/login");
         return;
       }
 
@@ -225,7 +239,7 @@ export default function ResumoCompraScreen() {
       // Tratar erro de autenticação específico
       if (error instanceof AuthError) {
         Alert.alert("Sem autorização", "Faça login para continuar.");
-        router.push("/(auth)/LoginScreen");
+        router.push("/login");
         return;
       }
 
@@ -282,11 +296,23 @@ export default function ResumoCompraScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backButton}>{"<"} Voltar</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>RESUMO DO PEDIDO</Text>
-        <View style={styles.placeholder} />
+        <TouchableOpacity
+          onPress={() => router.push("/(tabs)/NotificacoesScreen")}
+          style={styles.notificationButton}
+        >
+          <Ionicons
+            name="notifications-outline"
+            size={24}
+            color={Colors.primary}
+          />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -334,10 +360,14 @@ export default function ResumoCompraScreen() {
                 {formatPrice(subtotal)}
               </Text>
             </View>
-            <View style={styles.financeiroRow}>
-              <Text style={styles.financeiroLabel}>IVA (14%)</Text>
-              <Text style={styles.financeiroValue}>{formatPrice(iva)}</Text>
-            </View>
+            {ivaPercentagem > 0 && (
+              <View style={styles.financeiroRow}>
+                <Text style={styles.financeiroLabel}>
+                  IVA ({ivaPercentagem}%)
+                </Text>
+                <Text style={styles.financeiroValue}>{formatPrice(iva)}</Text>
+              </View>
+            )}
             <View style={styles.financeiroRow}>
               <Text style={styles.financeiroLabel}>Taxa de Entrega</Text>
               <Text style={styles.financeiroValue}>
@@ -446,9 +476,10 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.lightGray,
   },
   backButton: {
-    fontSize: FontSizes.md,
-    color: Colors.primary,
-    fontWeight: "600",
+    padding: Spacing.xs,
+  },
+  notificationButton: {
+    padding: Spacing.xs,
   },
   title: {
     fontSize: FontSizes.md,
@@ -488,7 +519,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 60,
     backgroundColor: Colors.lightGray,
-    borderRadius: 8,
+    borderRadius: 0,
   },
   itemInfo: {
     flex: 1,

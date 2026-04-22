@@ -8,14 +8,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  FlatList,
-  Image,
-  Modal,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    FlatList,
+    Image,
+    Modal,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // Função para normalizar texto (remover acentos)
@@ -337,7 +337,7 @@ export const ModalPesquisa: React.FC<ModalPesquisaProps> = ({
               />
               <TextInput
                 style={styles.searchInput}
-                placeholder="O que procura?"
+                placeholder="Encontre produtos, categorias e subcategorias"
                 placeholderTextColor={Colors.lightGray}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -469,19 +469,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.white,
-    borderRadius: 16,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: Colors.lightGray,
     paddingHorizontal: Spacing.md,
-    height: 56,
+    paddingVertical: Spacing.sm,
   },
   searchIcon: {
     marginRight: Spacing.sm,
   },
   searchInput: {
     flex: 1,
-    fontSize: FontSizes.lg,
+    fontSize: FontSizes.md,
     color: Colors.primary,
+    padding: 0,
   },
   clearButton: {
     padding: Spacing.xs,
@@ -554,7 +555,7 @@ const styles = StyleSheet.create({
   resultImage: {
     width: 60,
     height: 75,
-    borderRadius: 8,
+    borderRadius: 0,
     backgroundColor: Colors.lightGray,
   },
   resultInfo: {

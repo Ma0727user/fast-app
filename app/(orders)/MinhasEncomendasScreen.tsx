@@ -8,12 +8,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
-  FlatList,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    FlatList,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   filtroChip: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    borderRadius: 20,
+    borderRadius: 0,
     backgroundColor: Colors.lightGray,
     marginRight: Spacing.sm,
   },
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
   ordenarButton: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    borderRadius: 8,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: Colors.lightGray,
   },
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
   pedidoImagem: {
     width: 60,
     height: 75,
-    borderRadius: 8,
+    borderRadius: 0,
     backgroundColor: Colors.lightGray,
   },
   pedidoInfo: {

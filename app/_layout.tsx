@@ -19,10 +19,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <PaperProvider theme={theme}>
-        <StatusBar
-          style={isDark ? "light" : "dark"}
-          backgroundColor={isDark ? Colors.black : Colors.background}
-        />
+        <StatusBar style="light" backgroundColor={Colors.black} />
         <Stack
           screenOptions={{
             headerShown: false,
@@ -32,11 +29,25 @@ export default function RootLayout() {
             animation: "slide_from_right",
           }}
         >
+          <Stack.Screen
+            name="screens/auth/SplashScreen"
+            options={{
+              headerShown: false,
+              animation: "none",
+              contentStyle: {
+                backgroundColor: "#000000",
+              },
+            }}
+          />
           {/* Group Routes - these need explicit definitions */}
           <Stack.Screen
             name="(tabs)"
             options={{
               headerShown: false,
+              animation: "fade",
+              contentStyle: {
+                backgroundColor: Colors.black,
+              },
             }}
           />
           <Stack.Screen
@@ -67,6 +78,16 @@ export default function RootLayout() {
             name="(orders)"
             options={{
               headerShown: false,
+            }}
+          />
+          <Stack.Screen
+            name="index"
+            options={{
+              headerShown: false,
+              animation: "none",
+              contentStyle: {
+                backgroundColor: Colors.black,
+              },
             }}
           />
           {/* Individual routes are auto-detected from file-based routing:

@@ -9,13 +9,16 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
+import {
+    SafeAreaView,
+    useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 interface FAQItemProps {
   question: string;
@@ -49,6 +52,7 @@ const FAQItem: React.FC<FAQItemProps> = ({ question, answer }) => {
 };
 
 export default function FaqScreen() {
+  const insets = useSafeAreaInsets();
   const [faqItems, setFaqItems] = useState<
     { question: string; answer: string }[]
   >([]);
@@ -88,9 +92,15 @@ export default function FaqScreen() {
           headerBackTitle: "Voltar",
         }}
       />
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView
+        style={styles.container}
+        edges={["top", "bottom", "left", "right"]}
+      >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Spacing.xxl + insets.bottom },
+          ]}
           showsVerticalScrollIndicator={true}
         >
           {loading ? (
@@ -119,7 +129,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: Spacing.lg,
-    paddingBottom: Spacing.xxl,
   },
   header: {
     backgroundColor: Colors.background,

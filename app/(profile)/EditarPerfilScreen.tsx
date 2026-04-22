@@ -121,18 +121,23 @@ export default function EditarPerfilScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backButton}>{"<"} Voltar</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
           </TouchableOpacity>
           <Text style={styles.title}>EDITAR PERFIL</Text>
-          <View style={styles.placeholder} />
+          <TouchableOpacity 
+            onPress={() => router.push("/(tabs)/NotificacoesScreen")}
+            style={styles.notificationButton}
+          >
+            <Ionicons name="notifications-outline" size={24} color={Colors.primary} />
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -256,9 +261,10 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.lightGray,
   },
   backButton: {
-    fontSize: FontSizes.md,
-    color: Colors.primary,
-    fontWeight: "600",
+    padding: Spacing.xs,
+  },
+  notificationButton: {
+    padding: Spacing.xs,
   },
   title: {
     fontSize: FontSizes.md,
@@ -271,7 +277,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: Spacing.lg,
-    paddingBottom: 120,
+    paddingBottom: 160,
   },
   section: {
     marginBottom: Spacing.xl,

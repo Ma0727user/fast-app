@@ -17,6 +17,7 @@ export interface Produto {
   image: string;
   size?: string;
   color?: string;
+  personalizar?: string;
   // Campos para API do carrinho
   idProduto?: number;
   idVariacao?: number;

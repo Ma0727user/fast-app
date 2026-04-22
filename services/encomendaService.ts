@@ -69,22 +69,52 @@ export interface Encomenda {
   id_usuario: number;
   data_compra: string;
   estado: string;
-  total: string; // A API retorna como string
+  total: string;
+}
+
+export interface EncomendaDetalhe {
+  id_compra: number;
+  id_usuario: number;
+  data_compra: string;
+  estado: string;
+  total: string;
+  subtotal: string;
+  imposto: string;
+  taxa_entrega: string;
+  codigo_encomenda: string;
+  itens: EncomendaItemDetail[];
+  imagem_compra?: string;
+}
+
+export interface EncomendaItemDetail {
+  preco: number;
+  nome_produto: string;
+  imagem: string;
+  quantidade: number;
 }
 
 /**
  * Mapeia status da API real para formato do app
+ * A API pode retornar estado com aspas extras: '"Em preparação"'
  */
 const mapEstadoToStatus = (estado: string): string => {
+  // Limpar aspas extras que a API pode enviar
+  const estadoLimpo = estado.replace(/"/g, "").trim();
+
   const estadoMap: Record<string, string> = {
     Pendente: "Confirmado",
     Confirmado: "Confirmado",
     "Em Preparação": "Em Preparação",
+    "Em preparação": "Em Preparação",
+    "Em Preparacao": "Em Preparação",
     "A caminho": "A Caminho",
+    "A Caminho": "A Caminho",
+    A: "A Caminho",
     Entregue: "Entregue",
+    E: "Entregue",
     Cancelado: "Cancelado",
   };
-  return estadoMap[estado] || "Confirmado";
+  return estadoMap[estadoLimpo] || "Confirmado";
 };
 
 /**
@@ -201,10 +231,13 @@ export const criarEncomenda = async (
  */
 export const getEncomendas = async (userId: string): Promise<Encomenda[]> => {
   try {
-    const response = await api.get<ApiResponse<Encomenda[]>>(
-      `/encomendas/${userId}`,
-    );
-    return response.data.data;
+    const response = await api.get(`/encomendas/${userId}`);
+    // API retorna { data: [...], message, status }
+    const responseData = response.data;
+    if (responseData.data && Array.isArray(responseData.data)) {
+      return responseData.data as Encomenda[];
+    }
+    return [];
   } catch (error: any) {
     if (error.response?.status === 401) {
       throw new Error("Sessão expirada. Faça login novamente.");
@@ -227,6 +260,34 @@ export const getEncomendaById = async (id: string): Promise<Encomenda> => {
       throw new Error("Encomenda não encontrada.");
     }
     throw new Error("Erro ao carregar encomenda.");
+  }
+};
+
+/**
+ * Busca detalhes completos de uma encomenda pelo ID
+ * @param id ID da encomenda (id_compra)
+ * @returns Dados detalhados da encomenda
+ */
+export const getEncomendaDetalheById = async (
+  id: string,
+): Promise<EncomendaDetalhe> => {
+  try {
+    const response = await api.get(`/encomenda/${id}`);
+    // API retorna { data: [{ ... }], message, status } — pegar primeiro elemento
+    const responseData = response.data;
+    if (
+      responseData.data &&
+      Array.isArray(responseData.data) &&
+      responseData.data.length > 0
+    ) {
+      return responseData.data[0] as EncomendaDetalhe;
+    }
+    throw new Error("Encomenda não encontrada.");
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      throw new Error("Encomenda não encontrada.");
+    }
+    throw new Error(error.message || "Erro ao carregar detalhes da encomenda.");
   }
 };
 
@@ -334,27 +395,118 @@ export const getPedidoById = async (id: string): Promise<PedidoDetalhe> => {
  * Formato API: { id_compra, id_usuario, data_compra, estado, total }
  */
 export const mapEncomendasToApp = (encomendas: Encomenda[]): EncomendaApp[] => {
-  return encomendas.map((encomenda) => ({
-    id: String(encomenda.id_compra),
-    numero: `PED-${encomenda.id_compra}`,
-    data: encomenda.data_compra,
-    status: mapEstadoToStatus(encomenda.estado) as any,
-    total: parseFloat(String(encomenda.total)),
-    items: [],
-    endereco: {
-      rua: "",
-      cidade: "",
-      provincia: "",
-    },
-  }));
+  return encomendas.map((encomenda) => {
+    // Limpar aspas extras do estado
+    const estadoLimpo = (encomenda.estado || "").replace(/"/g, "").trim();
+    return {
+      id: String(encomenda.id_compra),
+      numero: `PED-${encomenda.id_compra}`,
+      data: encomenda.data_compra,
+      status: mapEstadoToStatus(estadoLimpo) as any,
+      total: parseFloat(String(encomenda.total)),
+      items: [],
+      endereco: {
+        rua: "",
+        cidade: "",
+        provincia: "",
+      },
+    };
+  });
+};
+
+/**
+ * Atualiza o estado de uma encomenda
+ * @param id ID da encomenda (id_compra)
+ * @param novoEstado Novo estado para a encomenda
+ */
+export const atualizaEncomendaEstado = async (
+  id: number,
+  novoEstado: string,
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const response = await api.post<ApiResponse<any>>(
+      `/atualizaencomenda/${id}`,
+      { estado_compra: novoEstado },
+    );
+    return {
+      success: response.data.status === 200,
+      message: response.data.message || "Estado atualizado com sucesso",
+    };
+  } catch (error: any) {
+    if (error.response?.status === 400) {
+      throw new Error("Estado inválido.");
+    }
+    throw new Error("Erro ao atualizar estado da encomenda.");
+  }
+};
+
+/**
+ * Confirma a entrega pelo cliente e permite anexar imagem da entrega.
+ * O endpoint exige PUT em /atualizaencomenda/{id}.
+ */
+export const confirmarEntregaCliente = async (
+  id: number,
+  imagemUri?: string,
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const formData = new FormData();
+    formData.append("estado_compra", "E");
+
+    if (imagemUri) {
+      const nomeArquivo = imagemUri.split("/").pop() || `entrega-${id}.jpg`;
+      const extensao = nomeArquivo.split(".").pop()?.toLowerCase();
+      const mimeType =
+        extensao === "png"
+          ? "image/png"
+          : extensao === "webp"
+            ? "image/webp"
+            : "image/jpeg";
+
+      formData.append("imagem", {
+        uri: imagemUri,
+        name: nomeArquivo,
+        type: mimeType,
+      } as any);
+    }
+
+    const response = await api.put<ApiResponse<any>>(
+      `/atualizaencomenda/${id}`,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      },
+    );
+
+    const apiStatus = (response.data as any)?.status;
+    const success =
+      response.status >= 200 &&
+      response.status < 300 &&
+      (apiStatus === undefined || apiStatus === 200 || apiStatus === true);
+
+    return {
+      success,
+      message:
+        response.data?.message || "Entrega confirmada e atualizada com sucesso",
+    };
+  } catch (error: any) {
+    if (error.response?.status === 400) {
+      throw new Error("Dados inválidos para confirmar entrega.");
+    }
+    throw new Error("Erro ao confirmar entrega da encomenda.");
+  }
 };
 
 export default {
   criarEncomenda,
   getEncomendas,
   getEncomendaById,
+  getEncomendaDetalheById,
   getStatusEncomenda,
   cancelarEncomenda,
   getPedidoById,
   mapEncomendasToApp,
+  atualizaEncomendaEstado,
+  confirmarEntregaCliente,
 };

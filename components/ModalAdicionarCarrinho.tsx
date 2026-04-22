@@ -7,13 +7,13 @@ import { Colors, FontSizes, formatPrice, Spacing } from "@/constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
-  Image,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Image,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 interface Produto {
@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
   produtoImage: {
     width: 80,
     height: 100,
-    borderRadius: 12,
+    borderRadius: 0,
     backgroundColor: Colors.lightGray,
   },
   produtoDetails: {
@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderWidth: 1,
     borderColor: Colors.lightGray,
-    borderRadius: 8,
+    borderRadius: 0,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -522,7 +522,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderWidth: 2,
-    borderRadius: 8,
+    borderRadius: 0,
     gap: Spacing.sm,
   },
   corButtonSelected: {
@@ -553,7 +553,7 @@ const styles = StyleSheet.create({
   tipoSelecaoButton: {
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xs,
-    borderRadius: 6,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: Colors.lightGray,
   },
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.lightGray,
-    borderRadius: 8,
+    borderRadius: 0,
     backgroundColor: Colors.white,
   },
   selectValue: {
@@ -595,7 +595,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.lightGray,
-    borderRadius: 8,
+    borderRadius: 0,
     backgroundColor: Colors.white,
     maxHeight: 200,
   },
@@ -683,7 +683,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderWidth: 1,
     borderColor: Colors.lightGray,
-    borderRadius: 8,
+    borderRadius: 0,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -697,7 +697,7 @@ const styles = StyleSheet.create({
   adicionarButton: {
     backgroundColor: Colors.primary,
     paddingVertical: Spacing.md,
-    borderRadius: 12,
+    borderRadius: 0,
     alignItems: "center",
     marginTop: Spacing.lg,
   },

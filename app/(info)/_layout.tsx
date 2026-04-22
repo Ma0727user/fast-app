@@ -16,6 +16,7 @@ export default function InfoLayout() {
       }}
     >
       <Stack.Screen name="TermosECondicoes" />
+      <Stack.Screen name="PoliticaPrivacidade" />
       <Stack.Screen name="FaqScreen" />
     </Stack>
   );

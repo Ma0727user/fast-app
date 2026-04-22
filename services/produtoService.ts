@@ -30,6 +30,7 @@ export interface Variacao {
   tamanho: string;
   preco: number;
   stock: number;
+  imagem?: string;
 }
 
 export interface ProdutoDetalhe {
@@ -58,6 +59,8 @@ export interface ProdutoDetalhe {
   Destaque: string;
   promocao: string;
   variacoes: Variacao[];
+  personalizar?: string;
+  produtos_relacionados?: any[];
 }
 
 export interface ProdutoDetalheResponse {
@@ -94,6 +97,12 @@ export interface ProdutoApp {
   promotionalPrice?: number;
   image: string;
   category?: string;
+  destaque?: boolean;
+  homem?: boolean;
+  mulher?: boolean;
+  crianca?: boolean;
+  desporto?: boolean;
+  produtoAngola?: boolean;
 }
 
 // Mapper para converter produto da API para formato do app
@@ -252,7 +261,10 @@ export const getProdutoById = async (id: number): Promise<any> => {
         tamanho: v.tamanho || "",
         preco: v.preco || produtoData.preco || 0,
         stock: v.stock || v.qtd_stock || 0,
+        imagem: v.imagem || "",
       })),
+      personalizar: produtoData.personalizar || "",
+      produtos_relacionados: produtoData.produtos_relacionados || [],
     };
 
     console.log("[getProdutoById] Produto normalizado:", produtoNormalizado);

@@ -7,18 +7,19 @@ import { ModalAdicionarCarrinho } from "@/components/ModalAdicionarCarrinho";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Colors, FontSizes, formatPrice, Spacing } from "@/constants/theme";
 import { getHomeData } from "@/services/authService";
+import { useStore } from "@/store/useStore";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Dimensions,
-  FlatList,
-  Image,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    FlatList,
+    Image,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -37,6 +38,7 @@ interface Produto {
 export default function PesquisarScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isAuthenticated = useStore((state) => state.isAuthenticated);
 
   const [todosProdutos, setTodosProdutos] = useState<Produto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,26 +60,15 @@ export default function PesquisarScreen() {
       const data = await getHomeData();
 
       if (data) {
-        let todosProdutosApi = [
-          ...(data.produtos_normais || []).map((p: any) => ({
-            id: String(p.id_produto),
-            id_categoriafk: p.id_categoriafk,
-            name: p.nome_produto,
-            price: p.preco,
-            promotionalPrice: p.preco_promo || undefined,
-            image: p.imagem || "",
-            categoria: p.nome_categoria || "",
-          })),
-          ...(data.lista_novidades || []).map((p: any) => ({
-            id: String(p.id_produto),
-            id_categoriafk: p.id_categoriafk,
-            name: p.nome_produto,
-            price: p.preco,
-            promotionalPrice: p.preco_promo || undefined,
-            image: p.imagem || "",
-            categoria: p.nome_categoria || "",
-          })),
-        ];
+        let todosProdutosApi = (data.produtos || []).map((p: any) => ({
+          id: String(p.id_produto),
+          id_categoriafk: p.id_categoria,
+          name: p.nome_produto,
+          price: p.preco,
+          promotionalPrice: p.preco_promo || undefined,
+          image: p.imagem1 || p.imagem || "",
+          categoria: p.nome_categoria || "",
+        }));
 
         // Remover duplicados
         const uniqueProdutos = todosProdutosApi.filter(
@@ -162,12 +153,6 @@ export default function PesquisarScreen() {
             {formatPrice(item.promotionalPrice || item.price)}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.comprarButtonSmall}
-          onPress={() => handleComprar(item)}
-        >
-          <Text style={styles.comprarButtonTextSmall}>COMPRAR</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -181,7 +166,25 @@ export default function PesquisarScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+        </TouchableOpacity>
         <Text style={styles.title}>PESQUISAR</Text>
+        {isAuthenticated && (
+          <TouchableOpacity
+            onPress={() => router.push("/(tabs)/NotificacoesScreen")}
+            style={styles.notificationButton}
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={24}
+              color={Colors.primary}
+            />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Campo de Pesquisa */}
@@ -195,7 +198,7 @@ export default function PesquisarScreen() {
           />
           <TextInput
             style={styles.searchInput}
-            placeholder="Pesquisar produtos..."
+            placeholder="Encontre o produto ideal"
             placeholderTextColor={Colors.lightGray}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -314,19 +317,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.white,
-    borderRadius: 12,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: Colors.lightGray,
     paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
   },
   searchIcon: {
     marginRight: Spacing.sm,
   },
   searchInput: {
     flex: 1,
-    height: 44,
     fontSize: FontSizes.md,
     color: Colors.primary,
+    padding: 0,
   },
   clearButton: {
     padding: Spacing.xs,
@@ -340,22 +344,22 @@ const styles = StyleSheet.create({
     color: Colors.secondary,
   },
   gridContainer: {
-    padding: Spacing.lg,
+    padding: Spacing.md,
     paddingBottom: 100,
   },
   gridRow: {
     justifyContent: "space-between",
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   gridCard: {
-    width: (width - Spacing.lg * 2 - Spacing.md) / 2,
+    width: (width - Spacing.md * 2 - Spacing.sm) / 2,
   },
   gridImage: {
     width: "100%",
     height: 180,
     backgroundColor: Colors.lightGray,
     marginBottom: Spacing.sm,
-    borderRadius: 12,
+    borderRadius: 0,
   },
   gridInfo: {
     paddingHorizontal: 2,
@@ -399,5 +403,11 @@ const styles = StyleSheet.create({
     marginTop: Spacing.md,
     textAlign: "center",
     paddingHorizontal: Spacing.lg,
+  },
+  backButton: {
+    padding: Spacing.xs,
+  },
+  notificationButton: {
+    padding: Spacing.xs,
   },
 });

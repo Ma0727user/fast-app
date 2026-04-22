@@ -5,11 +5,11 @@
  */
 
 import {
-  API_AUTH_TOKEN,
-  API_BASE_URL,
-  APP_CONFIG,
-  PLACEHOLDERS,
-  STORAGE_KEYS,
+    API_AUTH_TOKEN,
+    API_BASE_URL,
+    APP_CONFIG,
+    PLACEHOLDERS,
+    STORAGE_KEYS,
 } from "@/constants/env";
 import * as SecureStore from "expo-secure-store";
 
@@ -133,6 +133,18 @@ function normalizeApiResponse<T>(data: any, status: number): ApiResponse<T> {
   };
 }
 
+function isSuccessMessage(message: unknown): boolean {
+  if (typeof message !== "string") return false;
+
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("sucesso") ||
+    normalized.includes("success") ||
+    normalized.includes("verificado") ||
+    normalized.includes("enviado")
+  );
+}
+
 // ============================================
 // TIPOS
 // ============================================
@@ -188,20 +200,30 @@ export const login = async (
 
     // Verificar status da resposta
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error(
-          "Credenciais inválidas. Verifique o telemóvel e senha.",
-        );
+      if (response.status === 401 || response.status === 404) {
+        throw new Error("Telemóvel ou senha incorretos. Tenta novamente.");
       } else if (response.status === 403) {
         throw new Error("Acesso proibido. Contacte o suporte.");
       } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Erro ${response.status}`);
+        // Tentar ler JSON, se falhar usar mensagem genérica
+        try {
+          const errorData = await response.json();
+          throw new Error(
+            errorData.message || "Erro ao fazer login. Tenta mais tarde.",
+          );
+        } catch {
+          throw new Error("Erro ao fazer login. Tenta mais tarde.");
+        }
       }
     }
 
-    // Parsear resposta
-    const data = await response.json();
+    // Parsear resposta (proteger contra respostas não-JSON)
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error("Erro ao processar resposta. Tenta mais tarde.");
+    }
     console.log("Response data:", JSON.stringify(data));
 
     // Verificarprimeiro mensagem de erro na resposta
@@ -251,13 +273,11 @@ export const login = async (
   } catch (error: any) {
     console.error("Erro no login:", error);
 
-    // Tratamento de erros específico para autenticação
-    if (error.message.includes("Credenciais")) {
-      throw error;
-    } else if (error.message.includes("Network request failed")) {
-      throw new Error("Erro de conexão. Verifique sua internet.");
+    if (error.message.includes("Network request failed")) {
+      throw new Error("Sem ligação à internet. Verifica a tua conexão.");
     }
-    throw new Error(error.message || "Erro ao realizar login");
+    // Re-throw mensagens já amigáveis
+    throw new Error(error.message || "Erro ao fazer login. Tenta mais tarde.");
   }
 };
 
@@ -322,14 +342,17 @@ export const register = async (
     }
 
     const userData = data.data;
+    const pendingUserId = userData.id || userData.id_user;
+    const pendingUserPhone =
+      userData.telemovel || userData.telefone || telemovel;
 
     // Guardar os dados temporários para verificação
     await SecureStore.setItemAsync(
       "pending_user",
       JSON.stringify({
-        id: userData.id,
+        id: pendingUserId,
         nome: userData.nome,
-        telemovel: userData.telemovel,
+        telemovel: pendingUserPhone,
         foto: userData.foto,
       }),
     );
@@ -337,7 +360,7 @@ export const register = async (
     return {
       success: true,
       message: data.message || "Registro realizado! Verifique o seu telemóvel.",
-      userId: userData.id,
+      userId: pendingUserId,
     };
   } catch (error: any) {
     console.error("Erro no registro:", error);
@@ -395,12 +418,37 @@ export const verifyCode = async (
     const data = await response.json();
     console.log("Response data:", JSON.stringify(data));
 
-    // Verificar se a resposta contém dados do usuário
-    if (!data.data || typeof data.data !== "object") {
-      throw new Error(data.message || "Verificação falhou!");
-    }
+    // Alguns ambientes retornam apenas status/message no sucesso.
+    // Nesse caso, usamos os dados temporários salvos no registro.
+    const isSuccessResponse =
+      response.ok &&
+      (data?.status === 200 ||
+        data?.status === "200" ||
+        (typeof data?.message === "string" && isSuccessMessage(data.message)));
 
-    const userData = data.data;
+    let userData: any = null;
+
+    if (data?.data && typeof data.data === "object") {
+      userData = data.data;
+    } else if (isSuccessResponse) {
+      const pendingUserRaw = await SecureStore.getItemAsync("pending_user");
+
+      if (!pendingUserRaw) {
+        throw new Error(
+          "Código verificado, mas não foi possível recuperar os dados da conta. Faça login.",
+        );
+      }
+
+      try {
+        userData = JSON.parse(pendingUserRaw);
+      } catch {
+        throw new Error(
+          "Código verificado, mas os dados da conta estão inválidos. Faça login.",
+        );
+      }
+    } else {
+      throw new Error(data?.message || "Verificação falhou!");
+    }
 
     // O token JWT pode ser gerado localmente baseado no ID do usuário
     const token = `${AUTH_TOKEN}_${userData.id}_${Date.now()}`;
@@ -469,18 +517,22 @@ export const sendRecoveryCode = async (
     const data = await response.json();
     console.log("Response data:", JSON.stringify(data));
 
-    // O endpoint retorna sempre 200, mas a mensagem indica sucesso ou fracasso
-    if (data.message && data.message.includes("verificado")) {
+    // O endpoint pode variar o formato, então avaliamos status e mensagem.
+    if (
+      data?.status === 200 ||
+      data?.status === "200" ||
+      isSuccessMessage(data?.message)
+    ) {
       return {
         success: true,
-        message: data.message,
-      };
-    } else {
-      return {
-        success: false,
-        message: data.message || "Número de telemóvel não verificado",
+        message: data.message || "Código enviado com sucesso",
       };
     }
+
+    return {
+      success: false,
+      message: data.message || "Número de telemóvel não verificado",
+    };
   } catch (error: any) {
     console.error("Erro ao enviar código de recuperação:", error);
 
@@ -604,17 +656,82 @@ export const updateProfile = async (
   }
 };
 
+/**
+ * Elimina a conta do usuário autenticado
+ * POST /eliminar-conta
+ */
+export const deleteAccount = async (
+  idUsuario: number,
+  password: string,
+): Promise<{ success: boolean; message: string }> => {
+  try {
+    const body = new URLSearchParams();
+    body.append("id_usuario", String(idUsuario));
+    body.append("password", password);
+
+    console.log("Eliminando conta do usuário:", idUsuario);
+    console.log("URL:", `${BASE_URL}/eliminar-conta`);
+
+    const response = await fetch(`${BASE_URL}/eliminar-conta`, {
+      method: "POST",
+      headers: {
+        Authorization: AUTH_TOKEN,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+
+    let data: any = null;
+    try {
+      data = await response.json();
+    } catch {
+      // Backend pode não retornar JSON em alguns erros
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data?.message ||
+          data?.mensagem ||
+          "Não foi possível eliminar a conta. Tente novamente.",
+      );
+    }
+
+    return {
+      success: true,
+      message:
+        data?.message || data?.mensagem || "Conta eliminada com sucesso.",
+    };
+  } catch (error: any) {
+    console.error("Erro ao eliminar conta:", error);
+
+    if (error.message?.includes("Network request failed")) {
+      throw new Error("Sem ligação à internet. Verifica a tua conexão.");
+    }
+
+    throw new Error(
+      error.message || "Não foi possível eliminar a conta. Tente novamente.",
+    );
+  }
+};
+
 export interface StoreData {
+  sobrenos?: string;
   taxa_servico: string;
+  iva_percentagem: number;
+  telemovel?: number;
+  telemovel2?: number;
   iban: string;
+  link_insta?: string;
+  link_face?: string;
   nome_loja: string;
   titular: string;
+  email?: string;
 }
 
 export interface DeliveryZone {
   id_zona: number;
   nome_zona: string;
-  preco: string;
+  preco_taxa_entrega: string;
 }
 
 export interface FaqItem {
@@ -622,17 +739,60 @@ export interface FaqItem {
   resposta: string;
 }
 
+export interface TermoItem {
+  id_termo: number;
+  file_termo?: string;
+  titulo?: string;
+  texto_termo?: string;
+}
+
+export interface PoliticaItem {
+  id_politica: number;
+  descricao?: string;
+}
+
+export interface Parceiro {
+  id_parceiro: number;
+  nomeparceiro: string;
+  foto_parceiro: string;
+  data_cadastro?: string;
+}
+
 export interface Banner {
   id_banner: number;
   nome_banner: string;
   imagem: string;
+  tipo: string;
+  video?: string;
+}
+
+export interface BannerResponse {
+  data?: {
+    banners: Banner[];
+  };
+  message?: string;
+  date?: string;
+  status?: number;
+}
+
+export interface CategoriasResponse {
+  categorias: Categoria[];
 }
 
 export interface Categoria {
   id_categoria: number;
   nome_categoria: string;
-  imagem_categoria: string;
-  num_produtos: number;
+  descricao?: string;
+  foto_categoria: string;
+  data_registo?: string;
+  nome_criador?: string;
+  subcategorias?: SubCategoria[];
+  produtos?: { id_produto: number }[];
+}
+
+export interface SubCategoria {
+  id_subcategoria: number;
+  nome_subcategoria: string;
 }
 
 export interface Produto {
@@ -644,15 +804,92 @@ export interface Produto {
   promocao: string;
   destaque: string;
   imagem: string;
+  imagem1: string;
+  imagem2: string;
+  imagem3: string;
+  imagem4: string;
   qtd_stock: number;
+  homem: boolean;
+  mulher: boolean;
+  crianca: boolean;
+  desporto: boolean;
+  produtoAngola: boolean;
+  nome_categoria: string;
+  nome_subcategoria: string;
+  id_categoria: number;
+  id_subcategoria: number;
 }
 
 export interface HomeData {
   banners: Banner[];
   categorias: Categoria[];
-  produtos_normais: Produto[];
-  lista_novidades: Produto[];
+  produtos: Produto[];
+  bannersList: Banner[];
+  categoriasList: Categoria[];
 }
+
+export const getListaBanners = async (): Promise<Banner[]> => {
+  try {
+    const response = await fetch(`${BASE_URL}/listabanner`, {
+      method: "GET",
+      headers: {
+        Authorization: AUTH_TOKEN,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro ${response.status}`);
+    }
+
+    const data: BannerResponse = await response.json();
+    return data.data?.banners || [];
+  } catch (error: any) {
+    console.error("Erro ao buscar banners:", error);
+    return [];
+  }
+};
+
+export const getListaCategorias = async (): Promise<Categoria[]> => {
+  try {
+    const response = await fetch(`${BASE_URL}/lista-categorias`, {
+      method: "GET",
+      headers: {
+        Authorization: AUTH_TOKEN,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro ${response.status}`);
+    }
+
+    const data: CategoriasResponse = await response.json();
+    return data.categorias || [];
+  } catch (error: any) {
+    console.error("Erro ao buscar categorias:", error);
+    return [];
+  }
+};
+
+export const getListaProdutos = async (): Promise<Produto[]> => {
+  try {
+    const response = await fetch(`${BASE_URL}/listaprincipal`, {
+      method: "GET",
+      headers: {
+        Authorization: AUTH_TOKEN,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.produtos || [];
+  } catch (error: any) {
+    console.error("Erro ao buscar produtos:", error);
+    return [];
+  }
+};
 
 /**
  * Busca dados da loja
@@ -787,58 +1024,157 @@ export const getFaqs = async (): Promise<FaqItem[]> => {
 };
 
 /**
- * Busca dados principais para a tela Home
- * GET /listaprincipal
+ * Busca termos e condicoes
+ * GET /termos
  */
-export const getHomeData = async (): Promise<HomeData | null> => {
+export const getTermos = async (): Promise<TermoItem[]> => {
   try {
-    console.log("[getHomeData] Buscando dados da home...");
-    console.log("[getHomeData] URL:", `${BASE_URL}/listaprincipal`);
+    console.log("Buscando termos e condicoes...");
+    console.log("URL:", `${BASE_URL}/termos`);
 
-    // Fazer request usando fetch
-    const response = await fetch(`${BASE_URL}/listaprincipal`, {
+    const response = await fetch(`${BASE_URL}/termos`, {
       method: "GET",
       headers: {
         Authorization: AUTH_TOKEN,
       },
     });
 
-    console.log("[getHomeData] Response status:", response.status);
+    console.log("Response status:", response.status);
 
-    // Verificar status da resposta
     if (!response.ok) {
       const errorData = await response.json();
-      console.log("[getHomeData] Erro response:", errorData);
-      throw new Error(errorData.message || "Erro ao buscar dados.");
+      throw new Error(errorData.message || "Erro ao buscar termos.");
     }
 
-    // Parsear resposta
     const data = await response.json();
-    console.log(
-      "[getHomeData] Response data (raw):",
-      JSON.stringify(data, null, 2).substring(0, 500),
-    );
-    console.log(
-      "[getHomeData] data.data keys:",
-      data.data ? Object.keys(data.data) : "null",
-    );
+    console.log("Response data:", JSON.stringify(data));
 
-    // Verificar se a resposta contém dados
-    if (data.data) {
-      console.log(
-        "[getHomeData] categorias no data.data:",
-        data.data.categorias
-          ? `${data.data.categorias.length} itens`
-          : "undefined",
-      );
-      return data.data as HomeData;
+    if (data.data && Array.isArray(data.data)) {
+      return data.data as TermoItem[];
     }
 
-    console.log("[getHomeData] Sem dados - retornando null");
-    return null;
+    return [];
+  } catch (error: any) {
+    console.error("Erro ao buscar termos e condicoes:", error);
+    return [];
+  }
+};
+
+/**
+ * Busca politica de privacidade
+ * GET /politica
+ */
+export const getPolitica = async (): Promise<PoliticaItem[]> => {
+  try {
+    console.log("Buscando politica de privacidade...");
+    console.log("URL:", `${BASE_URL}/politica`);
+
+    const response = await fetch(`${BASE_URL}/politica`, {
+      method: "GET",
+      headers: {
+        Authorization: AUTH_TOKEN,
+      },
+    });
+
+    console.log("Response status:", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Erro ao buscar politica.");
+    }
+
+    const data = await response.json();
+    console.log("Response data:", JSON.stringify(data));
+
+    if (data.data && Array.isArray(data.data)) {
+      return data.data as PoliticaItem[];
+    }
+
+    return [];
+  } catch (error: any) {
+    console.error("Erro ao buscar politica de privacidade:", error);
+    return [];
+  }
+};
+
+/**
+ * Busca parceiros
+ * GET /listaparceiros
+ */
+export const getParceiros = async (): Promise<Parceiro[]> => {
+  try {
+    console.log("Buscando parceiros...");
+    console.log("URL:", `${BASE_URL}/listaparceiros`);
+
+    const response = await fetch(`${BASE_URL}/listaparceiros`, {
+      method: "GET",
+      headers: {
+        Authorization: AUTH_TOKEN,
+      },
+    });
+
+    console.log("Response status:", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Erro ao buscar parceiros.");
+    }
+
+    const data = await response.json();
+    console.log("Response data:", JSON.stringify(data));
+
+    if (
+      data.data &&
+      data.data.parceiros &&
+      Array.isArray(data.data.parceiros)
+    ) {
+      return data.data.parceiros as Parceiro[];
+    }
+
+    return [];
+  } catch (error: any) {
+    console.error("Erro ao buscar parceiros:", error);
+    return [];
+  }
+};
+
+/**
+ * Busca dados principais para a tela Home
+ * GET /listaprincipal, /listabanner, /lista-categorias
+ */
+export const getHomeData = async (): Promise<HomeData | null> => {
+  try {
+    console.log("[getHomeData] Buscando dados da home...");
+
+    const [produtosResponse, bannersResponse, categoriasResponse] =
+      await Promise.all([
+        fetch(`${BASE_URL}/listaprincipal`, {
+          method: "GET",
+          headers: { Authorization: AUTH_TOKEN },
+        }),
+        fetch(`${BASE_URL}/listabanner`, {
+          method: "GET",
+          headers: { Authorization: AUTH_TOKEN },
+        }),
+        fetch(`${BASE_URL}/lista-categorias`, {
+          method: "GET",
+          headers: { Authorization: AUTH_TOKEN },
+        }),
+      ]);
+
+    const produtosData = await produtosResponse.json();
+    const bannersData = await bannersResponse.json();
+    const categoriasData = await categoriasResponse.json();
+
+    return {
+      banners: bannersData.data?.banners || [],
+      categorias: categoriasData.categorias || [],
+      produtos: produtosData.produtos || [],
+      bannersList: bannersData.data?.banners || [],
+      categoriasList: categoriasData.categorias || [],
+    };
   } catch (error: any) {
     console.error("[getHomeData] Erro ao buscar dados da home:", error);
-    // Retorna null em caso de erro
     return null;
   }
 };
@@ -981,10 +1317,14 @@ export default {
   sendRecoveryCode,
   verifyRecoveryCode,
   updateProfile,
+  deleteAccount,
   getStoreData,
   getDeliveryZones,
   getFaqs,
   getHomeData,
+  getListaBanners,
+  getListaCategorias,
+  getListaProdutos,
   sanitizeImageUrl,
   isAuthenticated,
   isTokenValid,

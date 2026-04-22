@@ -11,13 +11,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -78,6 +78,7 @@ export default function DadosEntregaScreen() {
   >(null);
   const [zonasEntrega, setZonasEntrega] = useState<Endereco[]>([]);
   const [loadingZonas, setLoadingZonas] = useState(true);
+  const [ivaPercentagem, setIvaPercentagem] = useState(0);
 
   // Buscar zonas de entrega ao iniciar
   useEffect(() => {
@@ -90,7 +91,7 @@ export default function DadosEntregaScreen() {
           nome: zona.nome_zona.trim(),
           endereco: zona.nome_zona.trim(),
           provincia: "Luanda",
-          preco: parseFloat(zona.preco) || 0,
+          preco: parseFloat(zona.preco_taxa_entrega) || 0,
         }));
         setZonasEntrega(enderecos);
       } catch (error) {
@@ -113,7 +114,7 @@ export default function DadosEntregaScreen() {
       ? enderecoSelecionado?.preco || 0
       : lojaSelecionada?.preco || 0;
 
-  const iva = Math.round(subtotal * 0.14);
+  const iva = Math.round(subtotal * (ivaPercentagem / 100));
   const total = subtotal + iva + taxaEntrega;
 
   // Texto do tipo de entrega selecionado
@@ -154,12 +155,7 @@ export default function DadosEntregaScreen() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -169,7 +165,16 @@ export default function DadosEntregaScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
         <Text style={styles.title}>DADOS DE ENTREGA</Text>
-        <View style={styles.placeholder} />
+        <TouchableOpacity
+          onPress={() => router.push("/(tabs)/NotificacoesScreen")}
+          style={styles.notificationButton}
+        >
+          <Ionicons
+            name="notifications-outline"
+            size={24}
+            color={Colors.primary}
+          />
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -185,46 +190,6 @@ export default function DadosEntregaScreen() {
             <Text style={styles.sectionTitle}>
               SELECIONE UMA OPÇÃO DE ENTREGA
             </Text>
-
-            <TouchableOpacity
-              style={[
-                styles.tipoEntregaCard,
-                tipoEntrega === "loja" && styles.tipoEntregaCardActive,
-              ]}
-              onPress={() => {
-                setTipoEntrega("loja");
-                setEnderecoSelecionado(null);
-              }}
-            >
-              <View style={styles.tipoEntregaIcon}>
-                <Ionicons
-                  name="storefront-outline"
-                  size={28}
-                  color={tipoEntrega === "loja" ? Colors.white : Colors.primary}
-                />
-              </View>
-              <View style={styles.tipoEntregaInfo}>
-                <Text
-                  style={[
-                    styles.tipoEntregaTitulo,
-                    tipoEntrega === "loja" && styles.tipoEntregaTituloActive,
-                  ]}
-                >
-                  Retirar na Loja
-                </Text>
-                <Text style={styles.tipoEntregaDesc}>
-                  Sem custos adicionais
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.radioCircle,
-                  tipoEntrega === "loja" && styles.radioCircleActive,
-                ]}
-              >
-                {tipoEntrega === "loja" && <View style={styles.radioInner} />}
-              </View>
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={[
@@ -273,30 +238,7 @@ export default function DadosEntregaScreen() {
           </View>
 
           {/* Opções de Entrega */}
-          {tipoEntrega === "loja" ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>SELECIONE A LOJA</Text>
-              {LOJAS.map((loja) => (
-                <TouchableOpacity
-                  key={loja.id}
-                  style={[
-                    styles.enderecoCard,
-                    lojaSelecionada?.id === loja.id &&
-                      styles.enderecoCardActive,
-                  ]}
-                  onPress={() => setLojaSelecionada(loja)}
-                >
-                  <View style={styles.enderecoInfo}>
-                    <Text style={styles.enderecoNome}>{loja.nome}</Text>
-                    <Text style={styles.enderecoTexto}>{loja.endereco}</Text>
-                  </View>
-                  <Text style={styles.enderecoPreco}>
-                    {loja.preco === 0 ? "Grátis" : formatPrice(loja.preco)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
+          {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>SELECIONE UM ENDEREÇO</Text>
               {loadingZonas ? (
@@ -329,7 +271,7 @@ export default function DadosEntregaScreen() {
                 ))
               )}
             </View>
-          )}
+          }
         </ScrollView>
 
         {/* Resumo Financeiro */}
@@ -389,6 +331,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
   },
   backButton: {
+    padding: Spacing.xs,
+  },
+  notificationButton: {
     padding: Spacing.xs,
   },
   title: {

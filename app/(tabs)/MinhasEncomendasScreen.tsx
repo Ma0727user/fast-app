@@ -6,23 +6,23 @@
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Colors, FontSizes, formatPrice, Spacing } from "@/constants/theme";
 import {
-  Encomenda,
-  getEncomendas,
-  mapEncomendasToApp,
+    Encomenda,
+    getEncomendas,
+    mapEncomendasToApp,
 } from "@/services/encomendaService";
 import { useStore } from "@/store/useStore";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Dimensions,
-  FlatList,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    FlatList,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -93,29 +93,37 @@ export default function MinhasEncomendasScreen() {
   const [ordemData, setOrdemData] = useState("recente");
   const [filtrosVisiveis, setFiltrosVisiveis] = useState(false);
 
-  const carregarEncomendas = useCallback(async (isRefresh = false) => {
-    try {
-      if (isRefresh) {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
+  const carregarEncomendas = useCallback(
+    async (isRefresh = false) => {
+      try {
+        if (isRefresh) {
+          setIsRefreshing(true);
+        } else {
+          setIsLoading(true);
+        }
 
-      // Obter ID do usuário do store
-      const userId = user?.id || "1";
-      const data = await getEncomendas(userId);
-      setEncomendas(data);
-      // Mapear para formato do app
-      const mapped = mapEncomendasToApp(data);
-      setEncomendasMapped(mapped);
-    } catch (err) {
-      console.error("Erro ao carregar encomendas:", err);
-      setEncomendas([]);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
+        // Obter ID do usuário do store
+        const userId = user?.id;
+        if (!userId) {
+          console.warn("[Encomendas] Utilizador não autenticado");
+          setEncomendas([]);
+          return;
+        }
+        const data = await getEncomendas(userId);
+        setEncomendas(data);
+        // Mapear para formato do app
+        const mapped = mapEncomendasToApp(data);
+        setEncomendasMapped(mapped);
+      } catch (err) {
+        console.error("Erro ao carregar encomendas:", err);
+        setEncomendas([]);
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [user?.id],
+  );
 
   useEffect(() => {
     carregarEncomendas();
@@ -201,18 +209,35 @@ export default function MinhasEncomendasScreen() {
       ]}
     >
       <View style={styles.header}>
-        <View style={styles.placeholder} />
-        <Text style={styles.title}>MEUS PEDIDOS</Text>
         <TouchableOpacity
-          onPress={() => setFiltrosVisiveis(!filtrosVisiveis)}
-          style={styles.filterButton}
+          onPress={() => router.back()}
+          style={styles.backButton}
         >
-          <Ionicons
-            name="filter"
-            size={24}
-            color={filtrosVisiveis ? Colors.primary : Colors.secondary}
-          />
+          <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
+        <Text style={styles.title}>MEUS PEDIDOS</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            onPress={() => setFiltrosVisiveis(!filtrosVisiveis)}
+            style={styles.filterButton}
+          >
+            <Ionicons
+              name="filter"
+              size={24}
+              color={filtrosVisiveis ? Colors.primary : Colors.secondary}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push("/(tabs)/NotificacoesScreen")}
+            style={styles.notificationButton}
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={24}
+              color={Colors.primary}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {filtrosVisiveis && (
@@ -343,6 +368,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
+  },
+  backButton: {
+    padding: Spacing.xs,
+  },
+  notificationButton: {
+    padding: Spacing.xs,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   placeholder: {
     width: 24,

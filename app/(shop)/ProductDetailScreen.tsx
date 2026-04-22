@@ -4,189 +4,335 @@
  */
 
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { Colors, FontSizes, Spacing } from "@/constants/theme";
+import { getProdutoById } from "@/services/produtoService";
 import { Ionicons } from "@expo/vector-icons";
+import { useRoute } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Dimensions,
-  FlatList,
-  Image,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    Image,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 const { width } = Dimensions.get("window");
 
-const TAMANHOS = ["XS", "S", "M", "L", "XL", "XXL"];
-
-const CORES = [
-  { id: "1", name: "Preto", color: "#000000" },
-  { id: "2", name: "Branco", color: "#FFFFFF", border: true },
-  { id: "3", name: "Cinza", color: "#888888" },
-  { id: "4", name: "Vermelho", color: "#DC2626" },
-  { id: "5", name: "Azul", color: "#2563EB" },
-  { id: "6", name: "Verde", color: "#16A34A" },
-];
-
-// Galeria de imagens do produto
-const IMAGENS_PRODUTO = [
-  "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600&h=700&fit=crop",
-  "https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=600&h=700&fit=crop",
-  "https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=600&h=700&fit=crop",
-  "https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?w=600&h=700&fit=crop",
-];
-
 export default function ProductDetailScreen() {
   const router = useRouter();
-  const [selectedSize, setSelectedSize] = useState("M");
-  const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const route = useRoute();
+  const produtoId = route.params?.id;
 
-  const toggleColor = (colorId: string) => {
-    setSelectedColors((prev) =>
-      prev.includes(colorId)
-        ? prev.filter((id) => id !== colorId)
-        : [...prev, colorId],
+  const [produto, setProduto] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [selectedSize, setSelectedSize] = useState("");
+  const [selectedColor, setSelectedColor] = useState("");
+  const [personalizedText, setPersonalizedText] = useState("");
+
+  useEffect(() => {
+    const fetchProduto = async () => {
+      if (!produtoId) {
+        setError("ID do produto não fornecido");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const data = await getProdutoById(Number(produtoId));
+        setProduto(data);
+
+        // Definir tamanho padrão (primeiro disponível) ou M
+        if (data.variacoes && data.variacoes.length > 0) {
+          setSelectedSize(data.variacoes[0].tamanho);
+        } else {
+          setSelectedSize("M");
+        }
+
+        // Definir cor padrão (primeira disponível)
+        if (data.variacoes && data.variacoes.length > 0) {
+          setSelectedColor(data.variacoes[0].cor);
+        }
+      } catch (err: any) {
+        setError(err.message || "Erro ao carregar produto");
+        console.error("Erro ao buscar produto:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProduto();
+  }, [produtoId]);
+
+  const toggleColor = (cor: string) => {
+    setSelectedColor(cor);
+  };
+
+  const toggleSize = (tamanho: string) => {
+    setSelectedSize(tamanho);
+  };
+
+  const getUniqueColors = () => {
+    if (!produto?.variacoes) return [];
+    return [...new Set(produto.variacoes.map((v: any) => v.cor))];
+  };
+
+  const isUniqueColor = () => {
+    return getUniqueColors().length === 1;
+  };
+
+  const isAccessory = () => {
+    return produto?.tipoproduto === "ACESSORIOS";
+  };
+
+  const getSelectedVariation = () => {
+    if (!produto?.variacoes) return null;
+    if (isAccessory()) {
+      // Para acessórios, busca apenas pela cor
+      return produto.variacoes.find((v: any) => v.cor === selectedColor);
+    }
+    // Para outros produtos, busca por cor e tamanho
+    return produto.variacoes.find(
+      (v: any) => v.cor === selectedColor && v.tamanho === selectedSize,
     );
   };
 
-  const getSelectedColorNames = () => {
-    return selectedColors
-      .map((id) => CORES.find((c) => c.id === id)?.name)
-      .filter(Boolean)
-      .join(", ");
+  const getVariationImage = () => {
+    const variation = getSelectedVariation();
+    // Se a variação tiver uma imagem válida, use ela
+    if (
+      variation &&
+      variation.imagem &&
+      variation.imagem.trim() !== "" &&
+      !variation.imagem.endsWith("/")
+    ) {
+      return variation.imagem;
+    }
+    // Caso contrário, use a imagem principal do produto
+    return produto?.imagem1 || "";
   };
 
   const handleAddToCart = () => {
+    if (!selectedColor) {
+      alert("Por favor, selecione uma cor");
+      return;
+    }
+
+    if (!isAccessory() && !selectedSize) {
+      alert("Por favor, selecione tamanho e cor");
+      return;
+    }
+
     router.push("/(tabs)/CarrinhoScreen");
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push("/(tabs)/CarrinhoScreen")}
-          >
-            <Ionicons name="cart-outline" size={24} color={Colors.primary} />
-          </TouchableOpacity>
+      {loading ? (
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <Text>Carregando...</Text>
         </View>
-
-        {/* Galeria de Imagens */}
-        <View style={styles.galleryContainer}>
-          <FlatList
-            data={IMAGENS_PRODUTO}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={(e) => {
-              const index = Math.round(e.nativeEvent.contentOffset.x / width);
-              setActiveImageIndex(index);
-            }}
-            scrollEventThrottle={16}
-            renderItem={({ item }) => (
-              <Image source={{ uri: item }} style={styles.productImage} />
-            )}
-          />
-          {/* Indicadores de imagem */}
-          <View style={styles.pagination}>
-            {IMAGENS_PRODUTO.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.paginationDot,
-                  activeImageIndex === index && styles.paginationDotActive,
-                ]}
-              />
-            ))}
-          </View>
-        </View>
-
-        {/* Informações do Produto */}
-        <View style={styles.infoContainer}>
-          <Text style={styles.productName}>KIMBOLA</Text>
-          <Text style={styles.productPrice}>Kz 15.000</Text>
-
-          <Text style={styles.description}>
-            T-shirt desportiva de alta performance, desenvolvida com tecido
-            técnico respirável para máximo conforto durante o treino. Ideal para
-            atividades físicas e uso quotidiano.
+      ) : error ? (
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+          }}
+        >
+          <Text style={{ color: Colors.error, textAlign: "center" }}>
+            {error}
           </Text>
-
-          {/* Seletor de Tamanho */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>TAMANHO</Text>
-            <View style={styles.sizeContainer}>
-              {TAMANHOS.map((size) => (
-                <TouchableOpacity
-                  key={size}
-                  style={[
-                    styles.sizeButton,
-                    selectedSize === size && styles.sizeButtonSelected,
-                  ]}
-                  onPress={() => setSelectedSize(size)}
-                >
-                  <Text
-                    style={[
-                      styles.sizeText,
-                      selectedSize === size && styles.sizeTextSelected,
-                    ]}
-                  >
-                    {size}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-
-          {/* Seletor de Cor - Multiselect */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>COR (SELECIONE UMA OU MAIS)</Text>
-            <View style={styles.colorContainer}>
-              {CORES.map((cor) => (
-                <TouchableOpacity
-                  key={cor.id}
-                  style={[
-                    styles.colorButton,
-                    { backgroundColor: cor.color },
-                    cor.border && styles.colorButtonBorder,
-                    selectedColors.includes(cor.id) &&
-                      styles.colorButtonSelected,
-                  ]}
-                  onPress={() => toggleColor(cor.id)}
-                >
-                  {selectedColors.includes(cor.id) && (
-                    <Ionicons
-                      name="checkmark"
-                      size={16}
-                      color={
-                        cor.color === "#FFFFFF" ? Colors.primary : Colors.white
-                      }
-                    />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-            {selectedColors.length > 0 && (
-              <Text style={styles.colorName}>
-                Selecionado: {getSelectedColorNames()}
-              </Text>
-            )}
-            {selectedColors.length === 0 && (
-              <Text style={styles.colorName}>Nenhuma cor selecionada</Text>
-            )}
-          </View>
+          <Button title="Tentar Novamente" onPress={() => router.refresh()} />
         </View>
-      </ScrollView>
+      ) : produto ? (
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/(tabs)/CarrinhoScreen")}
+            >
+              <Ionicons name="cart-outline" size={24} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Galeria de Imagens */}
+          <View style={styles.galleryContainer}>
+            <Image
+              source={{ uri: getVariationImage() }}
+              style={styles.productImage}
+            />
+            {/* Indicadores de imagem - simplificado para uma imagem por variação */}
+            <View style={styles.pagination}>
+              <View
+                style={[styles.paginationDot, styles.paginationDotActive]}
+              />
+            </View>
+          </View>
+
+          {/* Informações do Produto */}
+          <View style={styles.infoContainer}>
+            <Text style={styles.productName}>
+              {produto.nome_produto || produto.nome || "Produto"}
+            </Text>
+            <Text style={styles.productPrice}>
+              Kz {(produto.preco || 0) / 100}.
+              {(produto.preco || 0) % (100).toString().padStart(2, "0")}
+            </Text>
+
+            <Text style={styles.description}>{produto.descricao || ""}</Text>
+
+            {/* Seletor de Tamanho - Apenas para produtos que não são acessórios */}
+            {!isAccessory() && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>TAMANHO</Text>
+                <View style={styles.sizeContainer}>
+                  {/* Obter tamanhos únicos das variações */}
+                  {[
+                    ...new Set(produto.variacoes.map((v: any) => v.tamanho)),
+                  ].map((size: string) => (
+                    <TouchableOpacity
+                      key={size}
+                      style={[
+                        styles.sizeButton,
+                        selectedSize === size && styles.sizeButtonSelected,
+                      ]}
+                      onPress={() => toggleSize(size)}
+                    >
+                      <Text
+                        style={[
+                          styles.sizeText,
+                          selectedSize === size && styles.sizeTextSelected,
+                        ]}
+                      >
+                        {size}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Seletor de Cor */}
+            <View style={styles.section}>
+              <View style={styles.colorHeaderContainer}>
+                <Text style={styles.sectionTitle}>COR</Text>
+                {isUniqueColor() && (
+                  <View style={styles.uniqueColorBadge}>
+                    <Text style={styles.uniqueColorBadgeText}>Cor Única</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.colorContainer}>
+                {/* Obter variações únicas por cor */}
+                {[
+                  ...new Map(
+                    produto.variacoes.map((v: any) => [
+                      v.cor,
+                      { cor: v.cor, imagem: v.imagem || produto.imagem1 || "" },
+                    ]),
+                  ).values(),
+                ].map((variacao: any) => (
+                  <TouchableOpacity
+                    key={variacao.cor}
+                    style={[
+                      styles.colorButton,
+                      selectedColor === variacao.cor &&
+                        styles.colorButtonSelected,
+                    ]}
+                    onPress={() => toggleColor(variacao.cor)}
+                  >
+                    {/* Exibir a imagem da variação ou cor de fundo */}
+                    {variacao.imagem && variacao.imagem.trim() !== "" ? (
+                      <Image
+                        source={{ uri: variacao.imagem }}
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 0,
+                          borderWidth: 1,
+                          borderColor: Colors.lightGray,
+                        }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 0,
+                          backgroundColor:
+                            variacao.cor.toLowerCase().includes("hex") ||
+                            variacao.cor.startsWith("#") ||
+                            variacao.cor.match(/^rgb/) ||
+                            variacao.cor.match(/^[0-9a-f]{6}$/i)
+                              ? variacao.cor
+                              : "#cccccc", // cor de fallback
+                          borderWidth: 1,
+                          borderColor: Colors.lightGray,
+                        }}
+                      />
+                    )}
+                    {selectedColor === variacao.cor && (
+                      <Ionicons
+                        name="checkmark"
+                        size={16}
+                        color={Colors.white}
+                      />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {selectedColor && (
+                <Text style={styles.colorName}>
+                  Selecionado: {selectedColor}
+                </Text>
+              )}
+              {!selectedColor && (
+                <Text style={styles.colorName}>Nenhuma cor selecionada</Text>
+              )}
+            </View>
+
+            {/* Campo de Personalização */}
+            {produto.personalizar === "sim" && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>PERSONALIZAR</Text>
+                <Text style={styles.personalizationNote}>
+                  Adiciona um nome ou número para personalizar o teu produto
+                  adidas ou criar o presente perfeito!
+                </Text>
+                <View style={styles.inputContainer}>
+                  <Input
+                    placeholder="Adicione seu texto aqui"
+                    value={personalizedText}
+                    onChangeText={setPersonalizedText}
+                  />
+                </View>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      ) : (
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <Text>Produto não encontrado</Text>
+        </View>
+      )}
 
       {/* Botão Fixo no Rodapé */}
       <View style={styles.footerButton}>
@@ -259,6 +405,24 @@ const styles = StyleSheet.create({
   section: {
     marginTop: Spacing.lg,
   },
+  colorHeaderContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: Spacing.md,
+  },
+  uniqueColorBadge: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: 4,
+  },
+  uniqueColorBadgeText: {
+    fontSize: FontSizes.xs,
+    fontWeight: "700",
+    color: Colors.white,
+    letterSpacing: 0.5,
+  },
   sectionTitle: {
     fontSize: FontSizes.sm,
     fontWeight: "700",
@@ -294,15 +458,14 @@ const styles = StyleSheet.create({
   colorContainer: {
     flexDirection: "row",
     gap: Spacing.md,
+    flexWrap: "wrap",
   },
   colorButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 0,
     justifyContent: "center",
     alignItems: "center",
-  },
-  colorButtonBorder: {
     borderWidth: 1,
     borderColor: Colors.lightGray,
   },
@@ -314,6 +477,15 @@ const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     color: Colors.secondary,
     marginTop: Spacing.sm,
+  },
+  inputContainer: {
+    marginBottom: Spacing.md,
+  },
+  personalizedPreview: {
+    fontSize: FontSizes.sm,
+    color: Colors.secondary,
+    fontStyle: "italic",
+    marginTop: Spacing.xs,
   },
   footerButton: {
     padding: Spacing.lg,

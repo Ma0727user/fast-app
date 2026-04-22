@@ -3,6 +3,7 @@
  * Tela de registo com campos: Nome Completo, Telemóvel, Palavra-passe
  */
 
+import { Toast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Colors, FontSizes, Spacing } from "@/constants/theme";
@@ -11,14 +12,14 @@ import { useStore } from "@/store/useStore";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 export default function SignupScreen() {
@@ -29,45 +30,58 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
+
+  // Estados do Toast
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastVariant, setToastVariant] = useState<"success" | "error">(
+    "success",
+  );
+  const [toastMessage, setToastMessage] = useState("");
+
+  const showToast = (variant: "success" | "error", message: string) => {
+    setToastVariant(variant);
+    setToastMessage(message);
+    setToastVisible(true);
+  };
 
   const handleSignup = async () => {
     // Validação
     if (!nome.trim()) {
-      setError("Por favor, insira o seu nome.");
+      showToast("error", "Por favor, insira o seu nome.");
       return;
     }
     if (!telemovel.trim()) {
-      setError("Por favor, insira o número de telemóvel.");
+      showToast("error", "Por favor, insira o número de telemóvel.");
       return;
     }
     if (!password.trim()) {
-      setError("Por favor, insira a palavra-passe.");
+      showToast("error", "Por favor, insira a palavra-passe.");
       return;
     }
     if (password !== confirmPassword) {
-      setError("As palavras-passe não coincidem.");
+      showToast("error", "As palavras-passe não coincidem.");
       return;
     }
     if (password.length < 4) {
-      setError("A palavra-passe deve ter pelo menos 4 caracteres.");
+      showToast("error", "A palavra-passe deve ter pelo menos 4 caracteres.");
       return;
     }
 
     try {
       setIsLoading(true);
-      setError("");
 
       // Chamar API de registro
       const result = await register(nome, telemovel, password);
 
       // Mostrar mensagem de sucesso
-      alert(result.message);
+      showToast("success", result.message);
 
       // Redirecionar para verificação de código
-      router.replace("/verificacao?telemovel=" + telemovel);
+      setTimeout(() => {
+        router.replace("/verificacao?telemovel=" + telemovel);
+      }, 2000);
     } catch (err: any) {
-      setError(err.message || "Erro ao registar. Tente novamente.");
+      showToast("error", err.message || "Erro ao registar. Tente novamente.");
     } finally {
       setIsLoading(false);
     }
@@ -138,12 +152,6 @@ export default function SignupScreen() {
             disabled={isLoading}
           />
 
-          {error ? (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-
           <View style={styles.terms}>
             <Text style={styles.termsText}>
               Ao registar-se, aceita os nossos{" "}
@@ -152,6 +160,13 @@ export default function SignupScreen() {
                 onPress={() => router.push("/(info)/TermosECondicoes")}
               >
                 Termos e Condições
+              </Text>{" "}
+              e a{" "}
+              <Text
+                style={styles.linkText}
+                onPress={() => router.push("/(info)/PoliticaPrivacidade")}
+              >
+                Política de Privacidade
               </Text>
             </Text>
           </View>
@@ -165,6 +180,14 @@ export default function SignupScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Toast de Feedback */}
+      <Toast
+        visible={toastVisible}
+        variant={toastVariant}
+        message={toastMessage}
+        onHide={() => setToastVisible(false)}
+      />
     </KeyboardAvoidingView>
   );
 }

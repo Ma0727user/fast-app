@@ -5,7 +5,6 @@
 
 import { API_AUTH_TOKEN, API_BASE_URL } from "@/constants/env";
 import axios from "axios";
-import * as SecureStore from "expo-secure-store";
 
 // ============================================
 // CONFIGURAÇÃO BASE
@@ -39,14 +38,10 @@ const api = axios.create({
 
 api.interceptors.request.use(
   async (config: any) => {
-    try {
-      const token = await SecureStore.getItemAsync("jwt_token");
-      if (token && config.headers) {
-        // Usar token diretamente sem prefixo Bearer
-        config.headers.Authorization = token;
-      }
-    } catch (error) {
-      console.error("Erro ao recuperar token:", error);
+    // Manter sempre o AUTH_TOKEN fixo da API no header Authorization.
+    // O token do usuário (jwt_token) é usado apenas para controle de sessão local.
+    if (config.headers) {
+      config.headers.Authorization = AUTH_TOKEN;
     }
     return config;
   },

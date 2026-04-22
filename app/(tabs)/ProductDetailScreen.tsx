@@ -3,27 +3,31 @@
  * Detalhes do produto com galeria, seletor de tamanho e cor
  */
 
+import { Toast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Colors, FontSizes, Spacing } from "@/constants/theme";
 import { sanitizeImageUrl } from "@/services/authService";
 import {
-  getProdutoById,
-  ProdutoDetalhe,
-  Variacao,
+    getProdutoById,
+    ProdutoDetalhe,
+    Variacao,
 } from "@/services/produtoService";
 import { useStore } from "@/store/useStore";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  Dimensions,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    FlatList,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -39,6 +43,7 @@ export default function ProductDetailScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const addToCart = useStore((state) => state.addToCart);
+  const isAuthenticated = useStore((state) => state.isAuthenticated);
 
   const [produto, setProduto] = useState<ProdutoDetalhe | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,9 +60,30 @@ export default function ProductDetailScreen() {
   const [coresDisponiveis, setCoresDisponiveis] = useState<string[]>([]);
   const [tamanhosDisponiveis, setTamanhosDisponiveis] = useState<string[]>([]);
 
+  // Imagens por cor (mapear cor -> imagem da variação)
+  const [imagensPorCor, setImagensPorCor] = useState<Record<string, string>>(
+    {},
+  );
+
+  // Campo de personalização
+  const [personalizarTexto, setPersonalizarTexto] = useState("");
+
   // Variação selecionada
   const [variacaoSelecionada, setVariacaoSelecionada] =
     useState<Variacao | null>(null);
+
+  // Estados do Toast
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastVariant, setToastVariant] = useState<"success" | "error">(
+    "success",
+  );
+  const [toastMessage, setToastMessage] = useState("");
+
+  const showToast = (variant: "success" | "error", message: string) => {
+    setToastVariant(variant);
+    setToastMessage(message);
+    setToastVisible(true);
+  };
 
   // Fetch produto da API
   useEffect(() => {
@@ -121,17 +147,75 @@ export default function ProductDetailScreen() {
       // Extrair cores e tamanhos únicos das variações
       if (produto.variacoes && produto.variacoes.length > 0) {
         const cores = [...new Set(produto.variacoes.map((v) => v.cor))];
-        const tamanhos = [...new Set(produto.variacoes.map((v) => v.tamanho))];
 
         setCoresDisponiveis(cores);
-        setTamanhosDisponiveis(tamanhos);
 
-        // Selecionar primeiro por padrão
-        if (cores.length > 0) setSelectedColor(cores[0]);
-        if (tamanhos.length > 0) setSelectedSize(tamanhos[0]);
+        // Extrair imagens por cor — pegar a primeira variação de cada cor com imagem válida
+        const imgsPorCor: Record<string, string> = {};
+        cores.forEach((cor) => {
+          const variacaoCor = produto.variacoes.find(
+            (v) =>
+              v.cor === cor &&
+              v.imagem &&
+              v.imagem.trim() !== "" &&
+              !v.imagem.endsWith("/"),
+          );
+          if (variacaoCor && variacaoCor.imagem) {
+            imgsPorCor[cor] = variacaoCor.imagem;
+          } else {
+            // fallback para imagem principal
+            imgsPorCor[cor] = imgs[0] || "";
+          }
+        });
+        setImagensPorCor(imgsPorCor);
+
+        // Selecionar primeira cor por padrão
+        if (cores.length > 0) {
+          setSelectedColor(cores[0]);
+          // Filtrar tamanhos para a primeira cor
+          const tamanhosDaCor = [
+            ...new Set(
+              produto.variacoes
+                .filter((v) => v.cor === cores[0])
+                .map((v) => v.tamanho),
+            ),
+          ];
+          setTamanhosDisponiveis(tamanhosDaCor);
+          if (tamanhosDaCor.length > 0) setSelectedSize(tamanhosDaCor[0]);
+        }
       }
     }
   }, [produto]);
+
+  // Quando mudar cor selecionada → filtrar tamanhos e atualizar imagem destaque
+  useEffect(() => {
+    if (!produto?.variacoes || !selectedColor) return;
+
+    // Filtrar tamanhos disponíveis para esta cor
+    const tamanhosDaCor = [
+      ...new Set(
+        produto.variacoes
+          .filter((v) => v.cor === selectedColor)
+          .map((v) => v.tamanho),
+      ),
+    ];
+    setTamanhosDisponiveis(tamanhosDaCor);
+
+    // Se o tamanho selecionado não existe nesta cor, selecionar o primeiro
+    if (!tamanhosDaCor.includes(selectedSize) && tamanhosDaCor.length > 0) {
+      setSelectedSize(tamanhosDaCor[0]);
+    }
+
+    // Atualizar imagem destaque com a imagem da cor
+    const imagemDaCor = imagensPorCor[selectedColor];
+    if (imagemDaCor) {
+      setImagens((prev) => {
+        const semDuplicatas = prev.filter((img) => img !== imagemDaCor);
+        return [imagemDaCor, ...semDuplicatas];
+      });
+      setActiveImageIndex(0);
+    }
+  }, [selectedColor]);
 
   // Atualizar variação selecionada quando cor ou tamanho muda
   useEffect(() => {
@@ -175,7 +259,7 @@ export default function ProductDetailScreen() {
   const handleAddToCart = () => {
     const hasVariacoes = produto?.variacoes && produto.variacoes.length > 0;
     if (!variacaoSelecionada && hasVariacoes) {
-      alert("Por favor, selecione tamanho e cor");
+      showToast("error", "Por favor, selecione tamanho e cor");
       return;
     }
 
@@ -187,9 +271,14 @@ export default function ProductDetailScreen() {
       image: produto?.imagem1 || "",
       size: selectedSize,
       color: selectedColor,
+      personalizar:
+        produto?.personalizar === "sim" ? personalizarTexto : undefined,
       idProduto: produto?.id_produto,
       idVariacao: variacaoSelecionada?.id,
     });
+
+    // Feedback visual
+    showToast("success", "Produto adicionado ao carrinho!");
 
     // O feedback visual é fornecido pelo componente AddToCartButton
   };
@@ -324,11 +413,17 @@ export default function ProductDetailScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color={Colors.primary} />
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push("/(tabs)/CarrinhoScreen")}
-          >
-            <Ionicons name="cart-outline" size={24} color={Colors.primary} />
-          </TouchableOpacity>
+          {isAuthenticated && (
+            <TouchableOpacity
+              onPress={() => router.push("/(tabs)/NotificacoesScreen")}
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={24}
+                color={Colors.primary}
+              />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Galeria de Imagens */}
@@ -435,13 +530,57 @@ export default function ProductDetailScreen() {
             </Text>
           </View>
 
-          {/* Seletor de Tamanho (se houver variações) */}
+          {/* Seletor de Cor - Miniaturas visuais */}
+          {coresDisponiveis.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>COR</Text>
+              <FlatList
+                data={coresDisponiveis}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item}
+                renderItem={({ item: cor }) => {
+                  const imagemCor = imagensPorCor[cor];
+                  const isSelected = selectedColor === cor;
+
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.colorThumbnailCard,
+                        isSelected && styles.colorThumbnailCardSelected,
+                      ]}
+                      onPress={() => {
+                        setSelectedColor(cor);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <Image
+                        source={{ uri: imagemCor }}
+                        style={styles.colorThumbnailImage}
+                        resizeMode="cover"
+                      />
+                      <Text
+                        style={[
+                          styles.colorThumbnailText,
+                          isSelected && styles.colorThumbnailTextSelected,
+                        ]}
+                      >
+                        {cor}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+                contentContainerStyle={{ gap: Spacing.sm }}
+              />
+            </View>
+          )}
+
+          {/* Seletor de Tamanho — filtrado pela cor selecionada */}
           {tamanhosDisponiveis.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>TAMANHO</Text>
               <View style={styles.sizeContainer}>
                 {tamanhosDisponiveis.map((size) => {
-                  // Verificar stock para esta combinação
                   const variacaoTamanho = produto?.variacoes?.find(
                     (v) => v.cor === selectedColor && v.tamanho === size,
                   );
@@ -476,51 +615,69 @@ export default function ProductDetailScreen() {
             </View>
           )}
 
-          {/* Seletor de Cor (se houver variações) */}
-          {coresDisponiveis.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>COR</Text>
-              <View style={styles.colorContainer}>
-                {coresDisponiveis.map((cor) => {
-                  // Verificar stock para esta combinação
-                  const variacaoCor = produto?.variacoes?.find(
-                    (v) => v.cor === cor && v.tamanho === selectedSize,
-                  );
-                  const temStock = variacaoCor ? variacaoCor.stock > 0 : false;
-
-                  return (
-                    <TouchableOpacity
-                      key={cor}
-                      style={[
-                        styles.colorButton,
-                        selectedColor === cor && styles.colorButtonSelected,
-                        !temStock && styles.colorButtonDisabled,
-                      ]}
-                      onPress={() => temStock && setSelectedColor(cor)}
-                      disabled={!temStock}
-                    >
-                      <View
-                        style={[
-                          styles.colorCircle,
-                          { backgroundColor: getCorHex(cor) },
-                          cor.toLowerCase() === "branco" &&
-                            styles.colorCircleBorder,
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.colorText,
-                          selectedColor === cor && styles.colorTextSelected,
-                        ]}
-                      >
-                        {cor.charAt(0).toUpperCase() + cor.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+          {/* Campo de Personalização */}
+          {(produto.personalizar === "sim" ||
+            (produto.descricao &&
+              produto.descricao.toLowerCase().includes("personalizável"))) && (
+            <View style={styles.personalizarCard}>
+              <Text style={styles.personalizarTitle}>
+                Personaliza o teu artigo
+              </Text>
+              <Text style={styles.personalizarHint}>
+                Adiciona um nome ou número para personalizar o teu produto FAST
+                ou criar o presente perfeito!
+              </Text>
+              <TextInput
+                style={styles.personalizarInput}
+                placeholder="Nome ou número (máx. 25 caracteres)"
+                placeholderTextColor={Colors.secondary}
+                value={personalizarTexto}
+                onChangeText={setPersonalizarTexto}
+                maxLength={25}
+              />
+              <Text style={styles.personalizarCounter}>
+                {personalizarTexto.length}/25
+              </Text>
             </View>
           )}
+
+          {/* Produtos Relacionados */}
+          {(produto as any).produtos_relacionados &&
+            (produto as any).produtos_relacionados.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>PODERÁS TAMBÉM GOSTAR</Text>
+                <FlatList
+                  data={(produto as any).produtos_relacionados}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  keyExtractor={(item: any) => String(item.id_produto)}
+                  renderItem={({ item }: any) => (
+                    <TouchableOpacity
+                      style={styles.relatedCard}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(tabs)/ProductDetailScreen",
+                          params: { id: item.id_produto },
+                        })
+                      }
+                    >
+                      <Image
+                        source={{ uri: item.imagem || item.imagem1 || "" }}
+                        style={styles.relatedImage}
+                        resizeMode="cover"
+                      />
+                      <Text style={styles.relatedName} numberOfLines={2}>
+                        {item.nome_produto}
+                      </Text>
+                      <Text style={styles.relatedPrice}>
+                        {(item.preco || 0).toFixed(2)} Kz
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  contentContainerStyle={{ gap: Spacing.md }}
+                />
+              </View>
+            )}
         </View>
       </ScrollView>
 
@@ -532,6 +689,14 @@ export default function ProductDetailScreen() {
           disabled={produto.variacoes?.length > 0 && !variacaoSelecionada}
         />
       </View>
+
+      {/* Toast de Feedback */}
+      <Toast
+        visible={toastVisible}
+        variant={toastVariant}
+        message={toastMessage}
+        onHide={() => setToastVisible(false)}
+      />
     </View>
   );
 }
@@ -715,6 +880,35 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: Spacing.sm,
   },
+  colorThumbnailCard: {
+    width: 80,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: Colors.lightGray,
+    borderRadius: 0,
+    paddingBottom: Spacing.sm,
+    overflow: "hidden",
+  },
+  colorThumbnailCardSelected: {
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  colorThumbnailImage: {
+    width: 78,
+    height: 80,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+  },
+  colorThumbnailText: {
+    fontSize: FontSizes.xs,
+    color: Colors.secondary,
+    marginTop: Spacing.xs,
+    textAlign: "center",
+  },
+  colorThumbnailTextSelected: {
+    color: Colors.primary,
+    fontWeight: "700",
+  },
   colorButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -723,7 +917,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.lightGray,
-    borderRadius: 8,
+    borderRadius: 0,
   },
   colorButtonSelected: {
     borderColor: Colors.primary,
@@ -749,6 +943,76 @@ const styles = StyleSheet.create({
   },
   colorTextSelected: {
     fontWeight: "600",
+  },
+  colorImage: {
+    width: 28,
+    height: 28,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: Colors.lightGray,
+  },
+  personalizarCard: {
+    marginTop: Spacing.lg,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.lightGray,
+    borderRadius: 0,
+    backgroundColor: Colors.lightGray + "15",
+  },
+  personalizarTitle: {
+    fontSize: FontSizes.md,
+    fontWeight: "700",
+    color: Colors.primary,
+    marginBottom: Spacing.xs,
+  },
+  personalizarHint: {
+    fontSize: FontSizes.sm,
+    color: Colors.secondary,
+    lineHeight: 20,
+    marginBottom: Spacing.md,
+  },
+  personalizarInput: {
+    borderWidth: 1,
+    borderColor: Colors.lightGray,
+    borderRadius: 8,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    fontSize: FontSizes.md,
+    color: Colors.primary,
+    backgroundColor: Colors.background,
+  },
+  personalizarCounter: {
+    fontSize: FontSizes.xs,
+    color: Colors.secondary,
+    textAlign: "right",
+    marginTop: Spacing.xs,
+  },
+  personalizarPreview: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    marginTop: Spacing.sm,
+    fontWeight: "600",
+  },
+  relatedCard: {
+    width: 140,
+    marginRight: Spacing.xs,
+  },
+  relatedImage: {
+    width: 140,
+    height: 180,
+    borderRadius: 0,
+    backgroundColor: Colors.lightGray,
+  },
+  relatedName: {
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+    fontWeight: "600",
+    marginTop: Spacing.sm,
+  },
+  relatedPrice: {
+    fontSize: FontSizes.sm,
+    color: Colors.secondary,
+    marginTop: Spacing.xs,
   },
   footerButton: {
     padding: Spacing.lg,

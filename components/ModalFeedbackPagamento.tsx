@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   button: {
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.xl,
-    borderRadius: 12,
+    borderRadius: 0,
     width: "100%",
   },
   buttonSuccess: {

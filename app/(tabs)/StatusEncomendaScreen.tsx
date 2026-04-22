@@ -4,20 +4,26 @@
  * Utiliza polling para atualização em tempo real do status
  */
 
+import { Toast, ToastVariant } from "@/components/Toast";
 import { Colors, FontSizes, formatPrice, Spacing } from "@/constants/theme";
 import { usePolling } from "@/hooks/usePolling";
-import { getPedidoById, PedidoDetalhe } from "@/services/encomendaService";
+import {
+    confirmarEntregaCliente,
+    EncomendaDetalhe,
+    getEncomendaDetalheById,
+} from "@/services/encomendaService";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -25,18 +31,24 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const getStepFromStatus = (status: string | null): number => {
   if (!status) return 1;
 
+  // Limpar aspas extras que a API pode enviar
+  const statusLimpo = status.replace(/"/g, "").trim();
+
   const statusMap: Record<string, number> = {
     Pendente: 1,
     Confirmado: 1,
     "Em Preparação": 2,
+    "Em preparação": 2,
     "Em Preparacao": 2,
     "A caminho": 3,
     "A Caminho": 3,
+    A: 3,
     Entregue: 4,
+    E: 4,
     Cancelado: 0,
   };
 
-  return statusMap[status] || 1;
+  return statusMap[statusLimpo] || 1;
 };
 
 // Dados fallback para quando não há dados da API
@@ -106,13 +118,27 @@ export default function StatusEncomendaScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
 
-  // ID da encomenda (pode vir dos params ou usar um default para demo)
-  const encomendaId = params.id ? String(params.id) : "1";
+  // ID da encomenda (deve vir dos params)
+  const encomendaId = params.id ? String(params.id) : null;
+  const [errorCarregamento, setErrorCarregamento] = useState<string | null>(
+    null,
+  );
 
   // Estado local para dados do pedido
-  const [pedido, setPedido] = useState<PedidoDetalhe | null>(null);
+  const [pedido, setPedido] = useState<EncomendaDetalhe | null>(null);
   const [isLoadingEncomenda, setIsLoadingEncomenda] = useState(true);
   const [dataAtualizacao, setDataAtualizacao] = useState<string>("");
+  const [isConfirmandoEntrega, setIsConfirmandoEntrega] = useState(false);
+  const [imagemEntregaUri, setImagemEntregaUri] = useState<string | null>(null);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastVariant, setToastVariant] = useState<ToastVariant>("info");
+
+  const showToast = (message: string, variant: ToastVariant = "info") => {
+    setToastMessage(message);
+    setToastVariant(variant);
+    setToastVisible(true);
+  };
 
   // Hook de polling para status em tempo real (a cada 15 segundos)
   const {
@@ -129,15 +155,25 @@ export default function StatusEncomendaScreen() {
 
   // Determina o step atual baseado no status
   const currentStep = pedido
-    ? getStepFromStatus(pedido.estado_pedido)
+    ? getStepFromStatus(pedido.estado)
     : getStepFromStatus(statusPolling);
+  const estadoAtual = pedido?.estado?.replace(/"/g, "").trim() || "";
+  const podeConfirmarEntrega =
+    estadoAtual === "A Caminho" || estadoAtual === "A caminho";
 
   // Carregar dados iniciais da encomenda
   useEffect(() => {
+    if (!encomendaId) {
+      setErrorCarregamento("ID da encomenda não encontrado");
+      setIsLoadingEncomenda(false);
+      return;
+    }
+
     const carregarEncomenda = async () => {
       try {
         setIsLoadingEncomenda(true);
-        const dados = await getPedidoById(encomendaId);
+        setErrorCarregamento(null);
+        const dados = await getEncomendaDetalheById(encomendaId);
         setPedido(dados);
 
         // Atualizar data de atualização
@@ -147,7 +183,9 @@ export default function StatusEncomendaScreen() {
         );
       } catch (error) {
         console.error("Erro ao carregar encomenda:", error);
-        // Mantém dados mock em caso de erro
+        setErrorCarregamento(
+          error instanceof Error ? error.message : "Erro ao carregar encomenda",
+        );
       } finally {
         setIsLoadingEncomenda(false);
       }
@@ -162,7 +200,7 @@ export default function StatusEncomendaScreen() {
     return () => {
       pararPolling();
     };
-  }, [encomendaId]);
+  }, [encomendaId, iniciarPolling, pararPolling]);
 
   // Atualizar data de atualização quando houver nova verificação
   useEffect(() => {
@@ -174,6 +212,80 @@ export default function StatusEncomendaScreen() {
     }
   }, [statusPolling, pollingAtivo]);
 
+  // Quando o status mudar via polling, recarregar os dados completos da encomenda
+  useEffect(() => {
+    if (statusPolling && encomendaId) {
+      const recarregarDados = async () => {
+        try {
+          const dados = await getEncomendaDetalheById(encomendaId);
+          setPedido(dados);
+        } catch (error) {
+          console.error("Erro ao recarregar dados da encomenda:", error);
+        }
+      };
+
+      recarregarDados();
+    }
+  }, [statusPolling, encomendaId]);
+
+  const handleSelecionarImagemEntrega = async () => {
+    try {
+      const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permissao.granted) {
+        showToast(
+          "Permita acesso à galeria para anexar imagem da compra.",
+          "warning",
+        );
+        return;
+      }
+
+      const resultado = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+        selectionLimit: 1,
+      });
+
+      if (!resultado.canceled && resultado.assets[0]) {
+        setImagemEntregaUri(resultado.assets[0].uri);
+        showToast("Imagem da compra selecionada.", "success");
+      }
+    } catch (error) {
+      console.error("Erro ao selecionar imagem da entrega:", error);
+      showToast("Não foi possível selecionar a imagem.", "error");
+    }
+  };
+
+  // Função para confirmar entrega
+  const handleConfirmarEntrega = async () => {
+    if (!pedido?.id_compra) {
+      showToast("ID da encomenda não encontrado.", "error");
+      return;
+    }
+
+    try {
+      setIsConfirmandoEntrega(true);
+      const result = await confirmarEntregaCliente(
+        pedido.id_compra,
+        imagemEntregaUri || undefined,
+      );
+      if (result.success) {
+        showToast("Entrega confirmada com sucesso!", "success");
+        const dados = await getEncomendaDetalheById(encomendaId);
+        setPedido(dados);
+        setImagemEntregaUri(null);
+      } else {
+        showToast(result.message || "Erro ao confirmar entrega", "error");
+      }
+    } catch (error: any) {
+      console.error("Erro ao confirmar entrega:", error);
+      showToast(error.message || "Erro ao confirmar entrega", "error");
+    } finally {
+      setIsConfirmandoEntrega(false);
+    }
+  };
+
   return (
     <View
       style={[
@@ -183,12 +295,35 @@ export default function StatusEncomendaScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.placeholder} />
+        <TouchableOpacity
+          onPress={() => router.replace("/(tabs)/MinhasEncomendasScreen")}
+        >
+          <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+        </TouchableOpacity>
         <Text style={styles.title}>ACOMPANHAR PEDIDO</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Mensagem de erro */}
+        {errorCarregamento && (
+          <View
+            style={[
+              styles.pollingIndicator,
+              {
+                backgroundColor: "#FFE5E5",
+                borderTopWidth: 1,
+                borderTopColor: "#FF6B6B",
+              },
+            ]}
+          >
+            <Ionicons name="alert-circle" size={16} color="#FF6B6B" />
+            <Text style={[styles.pollingText, { color: "#FF6B6B" }]}>
+              {errorCarregamento}
+            </Text>
+          </View>
+        )}
+
         {/* Indicador de atualização em tempo real */}
         <View style={styles.pollingIndicator}>
           {isPolling ? (
@@ -214,10 +349,10 @@ export default function StatusEncomendaScreen() {
         <View style={styles.pedidoInfo}>
           <Text style={styles.pedidoLabel}>PEDIDO</Text>
           <Text style={styles.pedidoNumero}>
-            {pedido ? `#${pedido.id_pedido}` : "Carregando..."}
+            {pedido ? `#${pedido.codigo_encomenda}` : "Carregando..."}
           </Text>
-          {pedido?.referencia && (
-            <Text style={styles.pedidoData}>Ref: {pedido.referencia}</Text>
+          {pedido?.id_compra && (
+            <Text style={styles.pedidoData}>ID: {pedido.id_compra}</Text>
           )}
         </View>
 
@@ -275,22 +410,15 @@ export default function StatusEncomendaScreen() {
         </View>
 
         {/* Informações de Pagamento */}
-        {pedido?.pagamento && (
-          <View style={styles.entregaInfo}>
-            <Text style={styles.entregaTitle}>PAGAMENTO</Text>
-            <View style={styles.entregaCard}>
-              <Text style={styles.entregaText}>
-                Referência: {pedido.pagamento.referencia_pagamento}
-              </Text>
-              <Text style={styles.entregaText}>
-                Estado: {pedido.pagamento.estado_pagamento}
-              </Text>
-              <Text style={styles.entregaText}>
-                Total a Pagar: {pedido.pagamento.total_pagar}
-              </Text>
-            </View>
+        <View style={styles.entregaInfo}>
+          <Text style={styles.entregaTitle}>PAGAMENTO</Text>
+          <View style={styles.entregaCard}>
+            <Text style={styles.entregaText}>
+              Estado: {pedido?.estado || "Confirmado"}
+            </Text>
+            <Text style={styles.entregaText}>Total: {pedido?.total} Kz</Text>
           </View>
-        )}
+        </View>
 
         {/* Produtos do Pedido */}
         <View style={styles.produtosInfo}>
@@ -300,7 +428,7 @@ export default function StatusEncomendaScreen() {
           ) : pedido?.itens && pedido.itens.length > 0 ? (
             <View style={styles.produtosContainer}>
               {pedido.itens.map((item, index) => (
-                <View key={item.id_produto || index} style={styles.produtoCard}>
+                <View key={index} style={styles.produtoCard}>
                   <Image
                     source={{ uri: item.imagem }}
                     style={styles.produtoImagem}
@@ -309,21 +437,11 @@ export default function StatusEncomendaScreen() {
                     <Text style={styles.produtoNome} numberOfLines={2}>
                       {item.nome_produto}
                     </Text>
-                    {/* Variantes do produto */}
-                    <View style={styles.variantesContainer}>
-                      <View style={styles.varianteBadge}>
-                        <Text style={styles.varianteTexto}>
-                          {item.cor} / {item.tamanho} (x{item.quantidade})
-                        </Text>
-                      </View>
-                    </View>
                     <View style={styles.produtoFooter}>
                       <Text style={styles.produtoQuantidade}>
                         Qtd: {item.quantidade}
                       </Text>
-                      <Text style={styles.produtoPreco}>
-                        {formatPrice(item.subtotal)}
-                      </Text>
+                      <Text style={styles.produtoPreco}>{item.preco} Kz</Text>
                     </View>
                   </View>
                 </View>
@@ -337,18 +455,20 @@ export default function StatusEncomendaScreen() {
               <View style={styles.totalContainer}>
                 <Text style={styles.totalLabel}>Subtotal:</Text>
                 <Text style={styles.totalValor}>
-                  {formatPrice(pedido.subtotal)}
+                  {formatPrice(parseFloat(pedido.subtotal))}
                 </Text>
               </View>
               <View style={styles.totalContainer}>
                 <Text style={styles.totalLabel}>Taxa de Entrega:</Text>
                 <Text style={styles.totalValor}>
-                  {formatPrice(pedido.taxa_entrega)}
+                  {formatPrice(parseFloat(pedido.taxa_entrega))}
                 </Text>
               </View>
               <View style={styles.totalContainer}>
                 <Text style={styles.totalLabel}>IVA:</Text>
-                <Text style={styles.totalValor}>{formatPrice(pedido.iva)}</Text>
+                <Text style={styles.totalValor}>
+                  {formatPrice(parseFloat(pedido.imposto))}
+                </Text>
               </View>
               <View
                 style={[
@@ -364,14 +484,82 @@ export default function StatusEncomendaScreen() {
                   Total:
                 </Text>
                 <Text style={[styles.totalValor, { fontSize: FontSizes.lg }]}>
-                  {formatPrice(
-                    pedido.subtotal + pedido.taxa_entrega + pedido.iva,
-                  )}
+                  {formatPrice(parseFloat(pedido.total))}
                 </Text>
               </View>
             </>
           )}
         </View>
+
+        {/* Imagem da compra confirmada (imagem_compra) */}
+        {pedido?.imagem_compra && (
+          <View style={styles.imagemCompraContainer}>
+            <Text style={styles.imagemCompraTitle}>
+              IMAGEM DA COMPRA CONFIRMADA
+            </Text>
+            <Image
+              source={{ uri: pedido.imagem_compra }}
+              style={styles.imagemCompra}
+              resizeMode="contain"
+            />
+            <Text style={styles.imagemCompraDescricao}>
+              Esta é a imagem da compra (imagem_compra) enviada pelo cliente ao
+              confirmar a receção dos produtos.
+            </Text>
+          </View>
+        )}
+
+        {/* Botão Confirmar Entrega */}
+        {podeConfirmarEntrega && (
+          <View style={styles.confirmacaoEntregaContainer}>
+            <TouchableOpacity
+              style={[styles.contactButton, styles.uploadImagemButton]}
+              onPress={handleSelecionarImagemEntrega}
+              disabled={isConfirmandoEntrega}
+            >
+              <Ionicons name="image-outline" size={20} color={Colors.primary} />
+              <Text style={styles.contactText}>
+                {imagemEntregaUri
+                  ? "Alterar Imagem da Compra"
+                  : "Carregar Imagem da Compra"}
+              </Text>
+            </TouchableOpacity>
+
+            {imagemEntregaUri && (
+              <Image
+                source={{ uri: imagemEntregaUri }}
+                style={styles.imagemEntregaPreview}
+                resizeMode="cover"
+              />
+            )}
+
+            <TouchableOpacity
+              style={[styles.contactButton, styles.confirmarEntregaButton]}
+              onPress={handleConfirmarEntrega}
+              disabled={isConfirmandoEntrega}
+            >
+              {isConfirmandoEntrega ? (
+                <>
+                  <ActivityIndicator size="small" color={Colors.white} />
+                  <Text style={[styles.contactText, { color: Colors.white }]}>
+                    Confirmando...
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={20}
+                    color={Colors.white}
+                  />
+                  <Text style={[styles.contactText, { color: Colors.white }]}>
+                    Confirmar Entrega
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Botão de Contacto */}
         <TouchableOpacity style={styles.contactButton}>
@@ -383,6 +571,13 @@ export default function StatusEncomendaScreen() {
           <Text style={styles.contactText}>Contactar Apoio ao Cliente</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Toast
+        visible={toastVisible}
+        variant={toastVariant}
+        message={toastMessage}
+        onHide={() => setToastVisible(false)}
+      />
     </View>
   );
 }
@@ -634,5 +829,48 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: Colors.primary,
     marginLeft: Spacing.sm,
+  },
+  imagemCompraContainer: {
+    marginVertical: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+  },
+  imagemCompraTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: "700",
+    color: Colors.primary,
+    letterSpacing: 1,
+    marginBottom: Spacing.md,
+  },
+  imagemCompra: {
+    width: "100%",
+    height: 300,
+    borderRadius: 12,
+    backgroundColor: Colors.lightGray,
+  },
+  imagemCompraDescricao: {
+    marginTop: Spacing.sm,
+    fontSize: FontSizes.sm,
+    color: Colors.secondary,
+    lineHeight: 20,
+  },
+  confirmacaoEntregaContainer: {
+    marginVertical: Spacing.md,
+    gap: Spacing.md,
+  },
+  uploadImagemButton: {
+    marginHorizontal: Spacing.lg,
+  },
+  imagemEntregaPreview: {
+    width: "100%",
+    height: 180,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.lightGray,
+    backgroundColor: Colors.white,
+  },
+  confirmarEntregaButton: {
+    marginHorizontal: Spacing.lg,
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
   },
 });

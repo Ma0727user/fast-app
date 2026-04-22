@@ -5,19 +5,23 @@
  */
 
 import { Colors, FontSizes, formatPrice, Spacing } from "@/constants/theme";
-import { getEncomendaById, StatusEncomenda } from "@/services/encomendaService";
+import {
+    atualizaEncomendaEstado,
+    getEncomendaById,
+    StatusEncomenda,
+} from "@/services/encomendaService";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Image,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Image,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // ============================================
@@ -76,32 +80,67 @@ export default function StatusEncomendaScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Buscar dados da encomenda
-  useEffect(() => {
-    const fetchEncomenda = async () => {
-      if (!encomendaId) {
-        setError("ID da encomenda não encontrado");
-        setLoading(false);
-        return;
-      }
+  // Atualizar estado da encomenda
+  const atualizarEstadoEncomenda = async (novoEstado: string) => {
+    try {
+      const idNum = parseInt(encomendaId, 10);
+      await atualizaEncomendaEstado(idNum, novoEstado);
+      // Recarrega dados após atualização
+      const data = await getEncomendaById(encomendaId);
+      setEncomenda(data);
+    } catch (err: any) {
+      console.error("[StatusEncomenda] Erro ao atualizar:", err);
+    }
+  };
 
-      try {
-        setLoading(true);
-        const data = await getEncomendaById(encomendaId);
-        setEncomenda(data);
-      } catch (err: any) {
-        console.error("[StatusEncomenda] Erro:", err);
-        setError(err.message || "Erro ao carregar encomenda");
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Função para buscar dados da encomenda
+  const fetchEncomenda = useCallback(async () => {
+    if (!encomendaId) {
+      setError("ID da encomenda não encontrado");
+      setLoading(false);
+      return;
+    }
 
-    fetchEncomenda();
+    try {
+      setLoading(true);
+      const data = await getEncomendaById(encomendaId);
+      setEncomenda(data);
+    } catch (err: any) {
+      console.error("[StatusEncomenda] Erro:", err);
+      setError(err.message || "Erro ao carregar encomenda");
+    } finally {
+      setLoading(false);
+    }
   }, [encomendaId]);
 
-  // Determina o passo atual
-  const currentStep = encomenda ? getStepIndex(encomenda.status) : 0;
+  // Buscar dados ao abrir e fazer polling a cada 15 segundos
+  useEffect(() => {
+    fetchEncomenda();
+    const interval = setInterval(fetchEncomenda, 15000);
+    return () => clearInterval(interval);
+  }, [fetchEncomenda]);
+
+  // Determina o passo atual baseado no estado da API
+  const getStepFromEstado = (estado: string | null): number => {
+    if (!estado) return 0;
+    const estadoUpper = estado.toUpperCase().replace(/"/g, "");
+    if (estadoUpper === "E") return 4;
+    if (estadoUpper === "A") return 3;
+    if (estadoUpper.includes("PENDENTE") || estadoUpper.includes("CONFIRMADO"))
+      return 1;
+    if (
+      estadoUpper.includes("EM PREPARA") ||
+      estadoUpper.includes("PREPARAÇÃO")
+    )
+      return 2;
+    if (estadoUpper.includes("A CAMINHO") || estadoUpper.includes("CAMINHO"))
+      return 3;
+    if (estadoUpper.includes("ENTREGUE")) return 4;
+    if (estadoUpper.includes("CANCELADO")) return 0;
+    return 1;
+  };
+
+  const currentStep = encomenda ? getStepFromEstado(encomenda.estado) : 0;
 
   // Formata data
   const formatData = (dataString: string): string => {
@@ -170,7 +209,12 @@ export default function StatusEncomendaScreen() {
             <View style={styles.pedidoInfo}>
               <Text style={styles.pedidoLabel}>PEDIDO</Text>
               <Text style={styles.pedidoNumero}>
-                {encomenda.numero || `PED-${encomenda.id}`}
+                {encomenda.codigo_encomenda ||
+                  encomenda.numero ||
+                  `PED-${encomenda.id_compra}`}
+              </Text>
+              <Text style={styles.statusAtual}>
+                {encomenda.estado?.replace(/"/g, "") || "Confirmado"}
               </Text>
             </View>
 
@@ -391,6 +435,12 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginTop: Spacing.xs,
   },
+  statusAtual: {
+    fontSize: FontSizes.md,
+    color: Colors.warning,
+    fontWeight: "600",
+    marginTop: Spacing.xs,
+  },
   timelineContainer: {
     marginBottom: Spacing.xl,
   },
@@ -485,13 +535,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.lightGray,
-    borderRadius: 12,
+    borderRadius: 0,
     padding: Spacing.sm,
   },
   produtoImagem: {
     width: 70,
     height: 70,
-    borderRadius: 8,
+    borderRadius: 0,
     backgroundColor: Colors.lightGray,
   },
   produtoInfo: {

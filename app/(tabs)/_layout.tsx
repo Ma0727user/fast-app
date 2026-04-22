@@ -6,7 +6,7 @@
 import { Colors } from "@/constants/theme";
 import { useStore } from "@/store/useStore";
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Tabs, usePathname } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,16 +14,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const cartItemCount = useStore((state) => state.getCartItemCount());
+  const pathname = usePathname();
+  const isDarkScreen = pathname?.includes("ProdutoAngola");
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.secondary,
+        tabBarActiveTintColor: isDarkScreen ? Colors.white : Colors.primary,
+        tabBarInactiveTintColor: isDarkScreen
+          ? "rgba(255,255,255,0.5)"
+          : Colors.secondary,
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: Colors.background,
-          borderTopColor: Colors.lightGray,
+          backgroundColor: isDarkScreen ? "#0a0a0a" : Colors.background,
+          borderTopColor: isDarkScreen
+            ? "rgba(255,255,255,0.1)"
+            : Colors.lightGray,
           borderTopWidth: 1,
           height: 60 + insets.bottom,
           paddingBottom: insets.bottom + 4,
@@ -56,9 +62,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="CategoriasScreen"
         options={{
-          title: "Categorias",
+          title: "Menu",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
+            <Ionicons name="menu-outline" size={size} color={color} />
           ),
         }}
       />
@@ -94,6 +100,7 @@ export default function TabLayout() {
       <Tabs.Screen name="MinhasEncomendasScreen" options={{ href: null }} />
       <Tabs.Screen name="StatusEncomendaScreen" options={{ href: null }} />
       <Tabs.Screen name="ProductDetailScreen" options={{ href: null }} />
+      <Tabs.Screen name="ProdutoAngolaScreen" options={{ href: null }} />
     </Tabs>
   );
 }

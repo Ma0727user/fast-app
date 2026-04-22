@@ -1,41 +1,43 @@
 /**
- * FAST - Categorias Screen
- * Grid de categorias com imagens e contagem de produtos
+ * FAST - Menu Screen
+ * Duas categorias em destaque + lista de categorias com subcategorias em dropdown
  */
 
 import { Colors, FontSizes, Spacing } from "@/constants/theme";
-import { getHomeData, sanitizeImageUrl } from "@/services/authService";
+import {
+    Categoria,
+    getHomeData,
+    Produto as ProdutoLoja,
+    sanitizeImageUrl,
+} from "@/services/authService";
+import { useStore } from "@/store/useStore";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Dimensions,
-  FlatList,
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Animated,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const { width } = Dimensions.get("window");
-
-interface CategoriaItem {
-  id: string;
-  idNumerico: number;
-  name: string;
-  image: string;
-  numProdutos: number;
-}
-
-export default function CategoriasScreen() {
+export default function MenuScreen() {
   const router = useRouter();
+  const isAuthenticated = useStore((state) => state.isAuthenticated);
   const insets = useSafeAreaInsets();
-  const [categorias, setCategorias] = useState<CategoriaItem[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [produtos, setProdutos] = useState<ProdutoLoja[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [pesquisa, setPesquisa] = useState("");
+  const [abertos, setAbertos] = useState<Set<number>>(new Set());
+  const [indiceDestaque, setIndiceDestaque] = useState(0);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     carregarCategorias();
@@ -44,101 +46,111 @@ export default function CategoriasScreen() {
   const carregarCategorias = async () => {
     try {
       setIsLoading(true);
-      setError(null);
-      console.log("[CategoriasScreen] Iniciando carregamento de categorias...");
       const data = await getHomeData();
-
-      console.log(
-        "[CategoriasScreen] Dados recebidos:",
-        JSON.stringify(data, null, 2),
-      );
-
-      if (data?.categorias && data.categorias.length > 0) {
-        console.log(
-          "[CategoriasScreen] Categorias encontradas:",
-          data.categorias.length,
-        );
-        // Mapear categorias da API
-        const categoriasFormatadas: CategoriaItem[] = data.categorias.map(
-          (cat) => {
-            const imageResult = sanitizeImageUrl(cat.imagem_categoria);
-            return {
-              id: String(cat.id_categoria),
-              idNumerico: cat.id_categoria,
-              name: cat.nome_categoria,
-              image: imageResult.url,
-              numProdutos: cat.num_produtos || 0,
-            };
-          },
-        );
-        console.log(
-          "[CategoriasScreen] Categorias formatadas:",
-          categoriasFormatadas,
-        );
-        setCategorias(categoriasFormatadas);
-      } else {
-        console.log("[CategoriasScreen] Sem categorias no data - data:", data);
-        setCategorias([]);
-      }
-    } catch (err: any) {
-      console.error("[CategoriasScreen] Erro ao carregar categorias:", err);
-      console.error("[CategoriasScreen] Stack trace:", err.stack);
-      setError(err.message || "Erro ao carregar categorias");
+      const categoriasData = data?.categorias || [];
+      setCategorias(categoriasData);
+      setProdutos(data?.produtos || []);
+      setAbertos(new Set());
+    } catch {
       setCategorias([]);
+      setProdutos([]);
+      setAbertos(new Set());
     } finally {
       setIsLoading(false);
     }
   };
 
-  const renderCategoria = ({ item }: { item: CategoriaItem }) => (
-    <TouchableOpacity
-      style={styles.categoriaCard}
-      onPress={() => {
-        console.log(
-          "[CategoriasScreen] Clicou na categoria:",
-          item.name,
-          "ID:",
-          item.idNumerico,
-          "tipo:",
-          typeof item.idNumerico,
-        );
-        router.push({
-          pathname: "/(shop)/ProductGridScreen",
-          params: {
-            categoria: item.name,
-            categoriaId: String(item.idNumerico),
-          },
-        });
-      }}
-    >
-      {/* Imagem de fundo */}
-      {item.image ? (
-        <Image
-          source={{ uri: item.image }}
-          style={styles.categoriaImagem}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={styles.categoriaSemImagem}>
-          <Ionicons name="grid-outline" size={40} color={Colors.lightGray} />
-        </View>
-      )}
+  const toggleDropdown = (id: number) => {
+    setAbertos((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
-      {/* Overlay escuro para legibilidade */}
-      <View style={styles.categoriaOverlay} />
+  const irParaCategoria = (nome: string, id: number) => {
+    router.push({
+      pathname: "/(shop)/ProductGridScreen",
+      params: { categoria: nome, categoriaId: String(id) },
+    });
+  };
 
-      {/* Conteúdo sobre a imagem */}
-      <View style={styles.categoriaConteudo}>
-        <Text style={styles.categoriaNome}>{item.name.toUpperCase()}</Text>
-        <View style={styles.categoriaInfo}>
-          <Ionicons name="cube-outline" size={14} color={Colors.white} />
-          <Text style={styles.categoriaNumProdutos}>
-            {item.numProdutos} produto{item.numProdutos !== 1 ? "s" : ""}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  const irParaSubcategoria = (
+    nomeCategoria: string,
+    idCategoria: number,
+    nomeSubcat: string,
+    idSubcat: number,
+  ) => {
+    router.push({
+      pathname: "/(shop)/ProductGridScreen",
+      params: {
+        categoria: nomeCategoria,
+        categoriaId: String(idCategoria),
+        subcategoria: nomeSubcat,
+        subcategoriaId: String(idSubcat),
+      },
+    });
+  };
+
+  // Primeiras 2 categorias para os cards de destaque
+  const categoriasDestaque = categorias.slice(0, 2);
+
+  useEffect(() => {
+    if (categoriasDestaque.length <= 1) return;
+
+    const interval = setInterval(() => {
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setIndiceDestaque((prev) => (prev + 1) % categoriasDestaque.length);
+      });
+    }, 180000);
+
+    return () => clearInterval(interval);
+  }, [categoriasDestaque.length, fadeAnim]);
+
+  useEffect(() => {
+    if (indiceDestaque >= categoriasDestaque.length) {
+      setIndiceDestaque(0);
+    }
+  }, [indiceDestaque, categoriasDestaque.length]);
+
+  const termo = pesquisa.trim().toLowerCase();
+
+  // Restantes para a lista de menu, filtradas pela pesquisa
+  const categoriasMenu = categorias
+    .slice(2)
+    .filter(
+      (c) =>
+        termo.length === 0 ||
+        c.nome_categoria.toLowerCase().includes(termo) ||
+        (c.subcategorias || []).some((s) =>
+          s.nome_subcategoria.toLowerCase().includes(termo),
+        ),
+    );
+
+  const produtosMenu = produtos
+    .filter(
+      (p) =>
+        termo.length > 0 &&
+        (p.nome_produto.toLowerCase().includes(termo) ||
+          p.nome_categoria.toLowerCase().includes(termo) ||
+          p.nome_subcategoria.toLowerCase().includes(termo)),
+    )
+    .slice(0, 12);
 
   if (isLoading) {
     return (
@@ -150,63 +162,293 @@ export default function CategoriasScreen() {
         ]}
       >
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>A carregar categorias...</Text>
-      </View>
-    );
-  }
-
-  if (error || categorias.length === 0) {
-    return (
-      <View
-        style={[
-          styles.container,
-          styles.centerContent,
-          { paddingTop: insets.top },
-        ]}
-      >
-        <Ionicons
-          name="folder-open-outline"
-          size={64}
-          color={Colors.lightGray}
-        />
-        <Text style={styles.emptyTitle}>Sem Categorias</Text>
-        <Text style={styles.emptyText}>
-          {error || "Não há categorias disponíveis neste momento."}
-        </Text>
       </View>
     );
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
-      ]}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Image
-          source={require("@/assets/images/fast-logo.png")}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-        <Text style={styles.title}>CATEGORIAS</Text>
+        <Text style={styles.title}>MENU</Text>
+        {isAuthenticated && (
+          <TouchableOpacity
+            onPress={() => router.push("/(tabs)/NotificacoesScreen")}
+            style={styles.notifButton}
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={24}
+              color={Colors.primary}
+            />
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Grid de Categorias */}
-      <FlatList
-        data={categorias}
-        renderItem={renderCategoria}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        columnWrapperStyle={styles.gridRow}
-        contentContainerStyle={styles.gridContent}
+      <ScrollView
         showsVerticalScrollIndicator={false}
-      />
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Slider de categorias em destaque (1 por vez com fade) */}
+        {categoriasDestaque.length > 0 && (
+          <View style={styles.destaqueSliderContainer}>
+            <Animated.View style={{ opacity: fadeAnim }}>
+              <TouchableOpacity
+                style={styles.destaqueCard}
+                onPress={() =>
+                  irParaCategoria(
+                    categoriasDestaque[indiceDestaque].nome_categoria,
+                    categoriasDestaque[indiceDestaque].id_categoria,
+                  )
+                }
+              >
+                {sanitizeImageUrl(
+                  categoriasDestaque[indiceDestaque].foto_categoria,
+                ).url ? (
+                  <Image
+                    source={{
+                      uri: sanitizeImageUrl(
+                        categoriasDestaque[indiceDestaque].foto_categoria,
+                      ).url,
+                    }}
+                    style={styles.destaqueImagem}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.destaqueSemImagem}>
+                    <Ionicons
+                      name="grid-outline"
+                      size={36}
+                      color={Colors.lightGray}
+                    />
+                  </View>
+                )}
+                <View style={styles.destaqueOverlay} />
+                <View style={styles.destaqueConteudo}>
+                  <Text style={styles.destaqueNome}>
+                    {categoriasDestaque[
+                      indiceDestaque
+                    ].nome_categoria.toUpperCase()}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        )}
 
-      {/* Padding bottom para safe area */}
-      <View style={{ height: 60 }} />
+        {/* Campo de pesquisa */}
+        <View style={styles.searchContainer}>
+          <Ionicons
+            name="search-outline"
+            size={18}
+            color={Colors.secondary}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Encontre produtos, categorias e mais"
+            placeholderTextColor={Colors.secondary}
+            value={pesquisa}
+            onChangeText={setPesquisa}
+          />
+          {pesquisa.length > 0 && (
+            <TouchableOpacity onPress={() => setPesquisa("")}>
+              <Ionicons
+                name="close-circle"
+                size={18}
+                color={Colors.secondary}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Links rápidos horizontais */}
+        {termo.length === 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.linksRapidosContainer}
+          >
+            {[
+              {
+                label: "Novidades",
+                onPress: () =>
+                  router.push({
+                    pathname: "/(shop)/ProductGridScreen",
+                    params: { categoria: "Novidades", filtro: "novidades" },
+                  }),
+              },
+              {
+                label: "Homem",
+                onPress: () =>
+                  router.push({
+                    pathname: "/(shop)/ProductGridScreen",
+                    params: { categoria: "Homem", filtro: "homem" },
+                  }),
+              },
+              {
+                label: "Mulher",
+                onPress: () =>
+                  router.push({
+                    pathname: "/(shop)/ProductGridScreen",
+                    params: { categoria: "Mulher", filtro: "mulher" },
+                  }),
+              },
+              {
+                label: "Criança",
+                onPress: () =>
+                  router.push({
+                    pathname: "/(shop)/ProductGridScreen",
+                    params: { categoria: "Criança", filtro: "crianca" },
+                  }),
+              },
+              {
+                label: "Produto Angola",
+                onPress: () => router.push("/(tabs)/ProdutoAngolaScreen"),
+              },
+            ].map((item, index) => (
+              <View key={item.label} style={styles.linkRapidoItemWrap}>
+                {index > 0 && <View style={styles.linkRapidoDivider} />}
+                <TouchableOpacity
+                  style={styles.linkRapidoButton}
+                  onPress={item.onPress}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.linkRapidoText}>{item.label}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* Lista menu com dropdown de subcategorias */}
+        <View style={styles.menuContainer}>
+          {/* Resultados de produtos */}
+          {termo.length > 0 && produtosMenu.length > 0 && (
+            <>
+              <View style={styles.divisor}>
+                <Text style={styles.divisorLabel}>PRODUTOS</Text>
+              </View>
+              {produtosMenu.map((produto) => (
+                <TouchableOpacity
+                  key={String(produto.id_produto)}
+                  style={styles.menuRow}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/ProductDetailScreen",
+                      params: { id: String(produto.id_produto) },
+                    })
+                  }
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.menuNome}>{produto.nome_produto}</Text>
+                  <Ionicons
+                    name="chevron-forward-outline"
+                    size={18}
+                    color={Colors.secondary}
+                  />
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+
+          {/* Divisor categorias */}
+          {categoriasMenu.length > 0 && (
+            <View style={styles.divisor}>
+              <Text style={styles.divisorLabel}>EXPLORE MAIS</Text>
+            </View>
+          )}
+
+          {categoriasMenu.length === 0 &&
+          produtosMenu.length === 0 &&
+          termo.length > 0 ? (
+            <View style={styles.emptyMenu}>
+              <Ionicons
+                name="search-outline"
+                size={40}
+                color={Colors.lightGray}
+              />
+              <Text style={styles.emptyText}>Nenhum resultado encontrado</Text>
+            </View>
+          ) : (
+            categoriasMenu.map((cat) => {
+              const isAberto = abertos.has(cat.id_categoria);
+              const temSubcats = (cat.subcategorias || []).length > 0;
+              const isUltimaCategoria =
+                categoriasMenu[categoriasMenu.length - 1]?.id_categoria ===
+                cat.id_categoria;
+
+              return (
+                <View key={cat.id_categoria} style={styles.menuItem}>
+                  <TouchableOpacity
+                    style={styles.menuRow}
+                    onPress={() =>
+                      temSubcats
+                        ? toggleDropdown(cat.id_categoria)
+                        : irParaCategoria(cat.nome_categoria, cat.id_categoria)
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.menuNome}>{cat.nome_categoria}</Text>
+                    {temSubcats ? (
+                      <Ionicons
+                        name={
+                          isAberto
+                            ? "chevron-up-outline"
+                            : "chevron-down-outline"
+                        }
+                        size={18}
+                        color={Colors.secondary}
+                      />
+                    ) : (
+                      <Ionicons
+                        name="chevron-forward-outline"
+                        size={18}
+                        color={Colors.secondary}
+                      />
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Subcategorias dropdown */}
+                  {isAberto && temSubcats && (
+                    <View style={styles.subcatContainer}>
+                      {(cat.subcategorias || []).map((sub) => (
+                        <TouchableOpacity
+                          key={sub.id_subcategoria}
+                          style={styles.subcatRow}
+                          onPress={() =>
+                            irParaSubcategoria(
+                              cat.nome_categoria,
+                              cat.id_categoria,
+                              sub.nome_subcategoria,
+                              sub.id_subcategoria,
+                            )
+                          }
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.subcatDot} />
+                          <Text style={styles.subcatNome}>
+                            {sub.nome_subcategoria}
+                          </Text>
+                          <Ionicons
+                            name="chevron-forward-outline"
+                            size={14}
+                            color={Colors.secondary}
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {!isUltimaCategoria && <View style={styles.menuSeparator} />}
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        <View style={{ height: 80 }} />
+      </ScrollView>
     </View>
   );
 }
@@ -219,98 +461,185 @@ const styles = StyleSheet.create({
   centerContent: {
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: Spacing.lg,
-  },
-  loadingText: {
-    marginTop: Spacing.md,
-    fontSize: FontSizes.md,
-    color: Colors.secondary,
-  },
-  emptyTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: "600",
-    color: Colors.primary,
-    marginTop: Spacing.lg,
-  },
-  emptyText: {
-    fontSize: FontSizes.md,
-    color: Colors.secondary,
-    textAlign: "center",
-    marginTop: Spacing.sm,
   },
   header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-  },
-  logo: {
-    width: 100,
-    height: 40,
   },
   title: {
     fontSize: FontSizes.lg,
     fontWeight: "700",
     color: Colors.primary,
-    textAlign: "center",
-    marginTop: Spacing.sm,
     letterSpacing: 1,
   },
-  gridContent: {
-    padding: Spacing.md,
-    paddingBottom: Spacing.xxl,
+  notifButton: {
+    padding: Spacing.xs,
   },
-  gridRow: {
-    justifyContent: "space-between",
-    marginBottom: Spacing.md,
+  scrollContent: {
+    paddingHorizontal: Spacing.md,
   },
-  categoriaCard: {
-    width: (width - Spacing.md * 2 - Spacing.sm) / 2,
-    height: 140,
-    borderRadius: 12,
+  // Cards destaque
+  destaqueSliderContainer: {
+    marginBottom: Spacing.lg,
+  },
+  destaqueCard: {
+    width: "100%",
+    height: 180,
+    borderRadius: 0,
     overflow: "hidden",
     backgroundColor: Colors.lightGray,
   },
-  categoriaImagem: {
+  destaqueImagem: {
     width: "100%",
     height: "100%",
   },
-  categoriaSemImagem: {
+  destaqueSemImagem: {
     width: "100%",
     height: "100%",
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: Colors.lightGray,
   },
-  categoriaOverlay: {
+  destaqueOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.35)",
+    backgroundColor: "rgba(0,0,0,0.35)",
   },
-  categoriaConteudo: {
+  destaqueConteudo: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
     padding: Spacing.md,
   },
-  categoriaNome: {
+  destaqueNome: {
     fontSize: FontSizes.md,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: 1,
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  // Pesquisa
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: Colors.white,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: Colors.lightGray,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  searchIcon: {
+    marginRight: Spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FontSizes.md,
+    color: Colors.primary,
+    padding: 0,
+  },
+  // Menu lista
+  menuContainer: {
+    borderRadius: 0,
+    overflow: "hidden",
+    backgroundColor: Colors.white,
+  },
+  menuItem: {
+    marginBottom: Spacing.xs,
+  },
+  menuSeparator: {
+    height: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.08)",
+    marginHorizontal: Spacing.lg,
+  },
+  linksRapidosContainer: {
+    paddingBottom: Spacing.md,
+    alignItems: "center",
+  },
+  linkRapidoItemWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  linkRapidoDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: Colors.lightGray,
+    marginHorizontal: Spacing.sm,
+  },
+  linkRapidoButton: {
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: Spacing.xs,
+  },
+  linkRapidoText: {
+    fontSize: FontSizes.sm,
+    fontWeight: "600",
+    color: Colors.primary,
+    letterSpacing: 0.3,
+  },
+  divisor: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xs + 2,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.primary,
+  },
+  divisorLabel: {
+    fontSize: FontSizes.xs,
     fontWeight: "700",
     color: Colors.white,
     letterSpacing: 1,
-    textShadowColor: "rgba(0, 0, 0, 0.5)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
   },
-  categoriaInfo: {
+  menuRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md + 2,
+  },
+  menuNome: {
+    fontSize: FontSizes.md,
+    fontWeight: "600",
+    color: Colors.primary,
+    flex: 1,
+  },
+  // Subcategorias
+  subcatContainer: {
+    backgroundColor: Colors.background,
+    marginTop: Spacing.xs,
+    paddingBottom: Spacing.xs,
+  },
+  subcatRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.xs,
-    marginTop: Spacing.xs,
+    paddingHorizontal: Spacing.lg + Spacing.md,
+    paddingVertical: Spacing.sm + 2,
   },
-  categoriaNumProdutos: {
-    fontSize: FontSizes.xs,
-    color: Colors.white,
-    textShadowColor: "rgba(0, 0, 0, 0.5)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
+  subcatDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
+    marginRight: Spacing.md,
+  },
+  subcatNome: {
+    flex: 1,
+    fontSize: FontSizes.sm,
+    color: Colors.primary,
+  },
+  emptyMenu: {
+    alignItems: "center",
+    padding: Spacing.xl,
+    gap: Spacing.md,
+  },
+  emptyText: {
+    fontSize: FontSizes.md,
+    color: Colors.secondary,
   },
 });

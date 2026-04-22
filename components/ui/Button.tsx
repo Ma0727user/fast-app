@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
   button: {
     width: "100%",
     paddingVertical: Spacing.xs,
-    borderRadius: 12,
+    borderRadius: 0,
     minHeight: 52,
   },
   contained: {

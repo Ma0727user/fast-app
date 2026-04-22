@@ -7,16 +7,13 @@
     "icon": "./assets/images/icon.png",
     "scheme": "fast",
     "userInterfaceStyle": "automatic",
-
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#000000",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -39,7 +36,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": false,
@@ -47,7 +45,11 @@
     },
     "extra": {
       "apiUrl": "https://fast.appteste.info/v1",
-      "apiAuthToken": "78bf33c31f864f639bb0ddfdddfb4d93"
+      "apiAuthToken": "78bf33c31f864f639bb0ddfdddfb4d93",
+      "router": {},
+      "eas": {
+        "projectId": "aaffbd5a-4599-4144-a233-cd5bf2889483"
+      }
     }
   }
 }

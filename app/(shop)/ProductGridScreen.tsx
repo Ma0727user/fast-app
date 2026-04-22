@@ -10,13 +10,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Dimensions,
-  FlatList,
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    FlatList,
+    Image,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -25,11 +25,19 @@ const { width } = Dimensions.get("window");
 interface Produto {
   id: string;
   id_categoriafk?: number;
+  id_parceiro?: number | null;
   name: string;
   price: number;
   promotionalPrice?: number;
   image: string;
   categoria: string;
+  parceiro?: string;
+  homem?: boolean;
+  mulher?: boolean;
+  unissexo?: boolean;
+  destaque?: boolean;
+  produtoAngola?: boolean;
+  desporto?: boolean;
 }
 
 // Dados mockados como fallback
@@ -85,6 +93,8 @@ const PRODUTOS_FALLBACK: Produto[] = [
 ];
 
 const CATEGORIAS = ["TODOS", "HOMEM", "MULHER", "ACESSÓRIOS", "EQUIPAMENTOS"];
+const SEXO = ["TODOS", "HOMEM", "MULHER", "UNISEXO"];
+const OUTROS = ["TODOS", "NOVIDADES", "PRODUTO_ANGOLA", "DESPORTO"];
 const ORDENAR_PRECO = [
   { label: "Padrão", value: "default" },
   { label: "Menor Preço", value: "asc" },
@@ -102,9 +112,25 @@ export default function ProductGridScreen() {
   const categoriaParam = Array.isArray(params.categoria)
     ? params.categoria[0]
     : params.categoria || "PRODUTOS";
+  const filtroParam = Array.isArray(params.filtro)
+    ? params.filtro[0]
+    : params.filtro || null;
   const categoriaIdParam = params.categoriaId
     ? Number(params.categoriaId)
     : null;
+  const parceiroIdParam = params.parceiroId ? Number(params.parceiroId) : null;
+  const parceiroParam = Array.isArray(params.parceiro)
+    ? params.parceiro[0]
+    : params.parceiro || null;
+  const parceiroIdValido =
+    parceiroIdParam !== null && !Number.isNaN(parceiroIdParam)
+      ? parceiroIdParam
+      : null;
+  const parceiroNomeNormalizado = String(parceiroParam || "")
+    .trim()
+    .toLowerCase();
+  const filtroParceiroAtivo =
+    parceiroIdValido !== null || parceiroNomeNormalizado.length > 0;
 
   console.log("[ProductGridScreen] categoriaParam:", categoriaParam);
   console.log(
@@ -112,6 +138,12 @@ export default function ProductGridScreen() {
     categoriaIdParam,
     "tipo:",
     typeof categoriaIdParam,
+  );
+  console.log(
+    "[ProductGridScreen] parceiroIdParam:",
+    parceiroIdValido,
+    "tipo:",
+    typeof parceiroIdValido,
   );
 
   const [todosProdutos, setTodosProdutos] = useState<Produto[]>([]);
@@ -128,6 +160,8 @@ export default function ProductGridScreen() {
   const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>(
     categoriaIdParam ? categoriaParam : "TODOS",
   );
+  const [sexoSelecionado, setSexoSelecionado] = useState<string>("TODOS");
+  const [outroSelecionado, setOutroSelecionado] = useState<string>("TODOS");
   const [ordemPreco, setOrdemPreco] = useState("default");
   const [filtrosVisiveis, setFiltrosVisiveis] = useState(false);
 
@@ -139,7 +173,7 @@ export default function ProductGridScreen() {
   // Carregar produtos e categorias da API
   useEffect(() => {
     carregarProdutos();
-  }, [categoriaIdParam]);
+  }, [categoriaIdParam, parceiroIdValido, parceiroNomeNormalizado]);
 
   // Atualizar categoria selecionada quando categoriaIdParam mudar
   useEffect(() => {
@@ -153,6 +187,45 @@ export default function ProductGridScreen() {
       }
     }
   }, [categoriaIdParam, categoriasApi]);
+
+  useEffect(() => {
+    const filtroInicial = String(filtroParam || "").toLowerCase();
+
+    if (!categoriaIdParam) {
+      setCategoriaSelecionada("TODOS");
+    }
+
+    switch (filtroInicial) {
+      case "novidades":
+        setOutroSelecionado("NOVIDADES");
+        setSexoSelecionado("TODOS");
+        break;
+      case "homem":
+        setSexoSelecionado("HOMEM");
+        setOutroSelecionado("TODOS");
+        break;
+      case "mulher":
+        setSexoSelecionado("MULHER");
+        setOutroSelecionado("TODOS");
+        break;
+      case "unissexo":
+        setSexoSelecionado("UNISEXO");
+        setOutroSelecionado("TODOS");
+        break;
+      case "produto_angola":
+        setOutroSelecionado("PRODUTO_ANGOLA");
+        setSexoSelecionado("TODOS");
+        break;
+      case "desporto":
+        setOutroSelecionado("DESPORTO");
+        setSexoSelecionado("TODOS");
+        break;
+      default:
+        setSexoSelecionado("TODOS");
+        setOutroSelecionado("TODOS");
+        break;
+    }
+  }, [filtroParam, categoriaIdParam]);
 
   const carregarProdutos = async () => {
     try {
@@ -171,27 +244,56 @@ export default function ProductGridScreen() {
           setCategoriasApi(data.categorias);
         }
 
-        // Combinar produtos normais e novidades
-        let todosProdutosApi = [
-          ...(data.produtos_normais || []).map((p: any) => ({
-            id: String(p.id_produto),
-            id_categoriafk: p.id_categoriafk,
-            name: p.nome_produto,
-            price: p.preco,
-            promotionalPrice: p.preco_promo || undefined,
-            image: p.imagem || "",
-            categoria: p.nome_categoria || "",
-          })),
-          ...(data.lista_novidades || []).map((p: any) => ({
-            id: String(p.id_produto),
-            id_categoriafk: p.id_categoriafk,
-            name: p.nome_produto,
-            price: p.preco,
-            promotionalPrice: p.preco_promo || undefined,
-            image: p.imagem || "",
-            categoria: p.nome_categoria || "",
-          })),
-        ];
+        // Combinar produtos da API
+        let todosProdutosApi = (data.produtos || []).map((p: any) => ({
+          id: String(p.id_produto),
+          id_categoriafk: p.id_categoria,
+          name: p.nome_produto,
+          price: p.preco,
+          promotionalPrice: p.preco_promo || undefined,
+          image: p.imagem1 || p.imagem || "",
+          categoria: p.nome_categoria || "",
+          id_parceiro:
+            p.id_parceiro ??
+            p.id_parceirofk ??
+            p.id_parceiro_fk ??
+            p.parceiro_id ??
+            null,
+          parceiro: p.nome_parceiro || p.parceiro || p.nomeparceiro || "",
+          homem: p.homem,
+          mulher: p.mulher,
+          unissexo: p.unissexo,
+          destaque: p.destaque === "sim",
+          produtoAngola: p.produtoAngola,
+          desporto: p.desporto,
+        }));
+
+        // Se veio da navegação por parceiro, filtrar por ID e/ou nome do parceiro
+        if (filtroParceiroAtivo) {
+          todosProdutosApi = todosProdutosApi.filter((p: any) => {
+            const idProdutoParceiro = Number(p.id_parceiro);
+            const parceiroProdutoNome = String(p.parceiro || "")
+              .trim()
+              .toLowerCase();
+
+            if (
+              parceiroIdValido !== null &&
+              idProdutoParceiro === parceiroIdValido
+            ) {
+              return true;
+            }
+
+            if (
+              parceiroNomeNormalizado.length > 0 &&
+              parceiroProdutoNome.length > 0 &&
+              parceiroProdutoNome.includes(parceiroNomeNormalizado)
+            ) {
+              return true;
+            }
+
+            return false;
+          });
+        }
 
         // Se tem ID da categoria, filtrar localmente
         if (categoriaIdParam) {
@@ -226,11 +328,11 @@ export default function ProductGridScreen() {
 
         setTodosProdutos(uniqueProdutos);
       } else {
-        setTodosProdutos(PRODUTOS_FALLBACK);
+        setTodosProdutos(filtroParceiroAtivo ? [] : PRODUTOS_FALLBACK);
       }
     } catch (error) {
       console.error("Erro ao carregar produtos:", error);
-      setTodosProdutos(PRODUTOS_FALLBACK);
+      setTodosProdutos(filtroParceiroAtivo ? [] : PRODUTOS_FALLBACK);
     } finally {
       setIsLoading(false);
     }
@@ -241,13 +343,45 @@ export default function ProductGridScreen() {
     let produtos = [...todosProdutos];
 
     // Se não tem produtos da API, usar fallback
-    if (produtos.length === 0 && isLoading === false) {
+    if (produtos.length === 0 && isLoading === false && !filtroParceiroAtivo) {
       produtos = PRODUTOS_FALLBACK;
     }
 
     // Filtrar por categoria
     if (categoriaSelecionada !== "TODOS") {
       produtos = produtos.filter((p) => p.categoria === categoriaSelecionada);
+    }
+
+    // Filtrar por sexo
+    if (sexoSelecionado !== "TODOS") {
+      produtos = produtos.filter((p) => {
+        switch (sexoSelecionado) {
+          case "HOMEM":
+            return p.homem === true;
+          case "MULHER":
+            return p.mulher === true;
+          case "UNISEXO":
+            return p.unissexo === true;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Filtrar por outros (novidades, produto angola, desporto)
+    if (outroSelecionado !== "TODOS") {
+      produtos = produtos.filter((p) => {
+        switch (outroSelecionado) {
+          case "NOVIDADES":
+            return p.destaque === true;
+          case "PRODUTO_ANGOLA":
+            return p.produtoAngola === true;
+          case "DESPORTO":
+            return p.desporto === true;
+          default:
+            return true;
+        }
+      });
     }
 
     // Ordenar por preço
@@ -264,7 +398,15 @@ export default function ProductGridScreen() {
     }
 
     return produtos;
-  }, [todosProdutos, categoriaSelecionada, ordemPreco, isLoading]);
+  }, [
+    todosProdutos,
+    categoriaSelecionada,
+    sexoSelecionado,
+    outroSelecionado,
+    ordemPreco,
+    isLoading,
+    filtroParceiroAtivo,
+  ]);
 
   const handleComprar = (produto: Produto) => {
     setProdutoSelecionado(produto);
@@ -284,6 +426,13 @@ export default function ProductGridScreen() {
     });
     // Fechar o modal e permanecer na mesma tela
     setModalVisible(false);
+  };
+
+  const limparFiltros = () => {
+    setCategoriaSelecionada(categoriaIdParam ? categoriaParam : "TODOS");
+    setSexoSelecionado("TODOS");
+    setOutroSelecionado("TODOS");
+    setOrdemPreco("default");
   };
 
   const renderProduto = ({ item }: { item: Produto }) => (
@@ -321,12 +470,6 @@ export default function ProductGridScreen() {
             {formatPrice(item.promotionalPrice || item.price)}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.comprarButtonSmall}
-          onPress={() => handleComprar(item)}
-        >
-          <Text style={styles.comprarButtonTextSmall}>COMPRAR</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -341,15 +484,20 @@ export default function ProductGridScreen() {
         >
           <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.title}>{categoriaParam.toUpperCase()}</Text>
+        <Text style={styles.title}>
+          {String(parceiroParam || categoriaParam).toUpperCase()}
+        </Text>
         <TouchableOpacity
           onPress={() => setFiltrosVisiveis(!filtrosVisiveis)}
-          style={styles.filterButton}
+          style={[
+            styles.filterButton,
+            filtrosVisiveis && styles.filterButtonActive,
+          ]}
         >
           <Ionicons
-            name="filter"
-            size={24}
-            color={filtrosVisiveis ? Colors.primary : Colors.secondary}
+            name={filtrosVisiveis ? "close-outline" : "options-outline"}
+            size={20}
+            color={filtrosVisiveis ? Colors.white : Colors.primary}
           />
         </TouchableOpacity>
       </View>
@@ -357,6 +505,16 @@ export default function ProductGridScreen() {
       {/* Filtros - só mostra se filtrosVisiveis for true */}
       {filtrosVisiveis && (
         <View style={styles.filtrosContainer}>
+          <View style={styles.filtrosTopbar}>
+            <Text style={styles.filtrosTitle}>FILTRAR PRODUTOS</Text>
+            <TouchableOpacity
+              onPress={limparFiltros}
+              style={styles.limparFiltrosButton}
+            >
+              <Text style={styles.limparFiltrosText}>Limpar</Text>
+            </TouchableOpacity>
+          </View>
+
           {/* Categorias */}
           <View style={styles.filtroSection}>
             <Text style={styles.filtroLabel}>CATEGORIA</Text>
@@ -365,6 +523,7 @@ export default function ProductGridScreen() {
               horizontal
               showsHorizontalScrollIndicator={false}
               keyExtractor={(item) => item}
+              contentContainerStyle={styles.filtroListContent}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={[
@@ -381,6 +540,66 @@ export default function ProductGridScreen() {
                     ]}
                   >
                     {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+
+          {/* Sexo */}
+          <View style={styles.filtroSection}>
+            <Text style={styles.filtroLabel}>SEXO</Text>
+            <FlatList
+              data={SEXO}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item}
+              contentContainerStyle={styles.filtroListContent}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.filtroChip,
+                    sexoSelecionado === item && styles.filtroChipActive,
+                  ]}
+                  onPress={() => setSexoSelecionado(item)}
+                >
+                  <Text
+                    style={[
+                      styles.filtroChipText,
+                      sexoSelecionado === item && styles.filtroChipTextActive,
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+
+          {/* Outros filtros */}
+          <View style={styles.filtroSection}>
+            <Text style={styles.filtroLabel}>OUTROS</Text>
+            <FlatList
+              data={OUTROS}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item}
+              contentContainerStyle={styles.filtroListContent}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.filtroChip,
+                    outroSelecionado === item && styles.filtroChipActive,
+                  ]}
+                  onPress={() => setOutroSelecionado(item)}
+                >
+                  <Text
+                    style={[
+                      styles.filtroChipText,
+                      outroSelecionado === item && styles.filtroChipTextActive,
+                    ]}
+                  >
+                    {item.replace("_", " ")}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -478,38 +697,85 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   filterButton: {
-    padding: Spacing.xs,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  filterButtonActive: {
+    backgroundColor: Colors.primary,
   },
   filtrosContainer: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.background,
+    paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.lightGray,
   },
-  filtroSection: {
+  filtrosTopbar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: Spacing.md,
+  },
+  filtrosTitle: {
+    fontSize: FontSizes.sm,
+    fontWeight: "700",
+    color: Colors.primary,
+    letterSpacing: 1,
+  },
+  limparFiltrosButton: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.lightGray,
+    backgroundColor: Colors.white,
+  },
+  limparFiltrosText: {
+    fontSize: FontSizes.xs,
+    fontWeight: "600",
+    color: Colors.secondary,
+  },
+  filtroSection: {
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.lightGray,
+    padding: Spacing.md,
   },
   filtroLabel: {
     fontSize: FontSizes.xs,
-    fontWeight: "600",
+    fontWeight: "700",
     color: Colors.secondary,
     marginBottom: Spacing.sm,
     letterSpacing: 1,
   },
+  filtroListContent: {
+    paddingRight: Spacing.xs,
+  },
   filtroChip: {
+    minHeight: 36,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: 20,
-    backgroundColor: Colors.lightGray,
-    marginRight: Spacing.sm,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: 0,
+    backgroundColor: Colors.white,
+    marginRight: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.lightGray,
+    justifyContent: "center",
   },
   filtroChipActive: {
     backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   filtroChipText: {
-    fontSize: FontSizes.sm,
+    fontSize: FontSizes.xs,
+    fontWeight: "600",
     color: Colors.secondary,
+    letterSpacing: 0.4,
   },
   filtroChipTextActive: {
     color: Colors.white,
@@ -517,22 +783,28 @@ const styles = StyleSheet.create({
   },
   precoOrdenarContainer: {
     flexDirection: "row",
-    gap: Spacing.sm,
+    gap: Spacing.xs,
+    flexWrap: "wrap",
   },
   precoOrdenarButton: {
+    minHeight: 36,
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: 8,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: 0,
     borderWidth: 1,
     borderColor: Colors.lightGray,
+    backgroundColor: Colors.white,
+    justifyContent: "center",
   },
   precoOrdenarButtonActive: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
   precoOrdenarText: {
-    fontSize: FontSizes.sm,
+    fontSize: FontSizes.xs,
+    fontWeight: "600",
     color: Colors.secondary,
+    letterSpacing: 0.4,
   },
   precoOrdenarTextActive: {
     color: Colors.white,
@@ -547,22 +819,22 @@ const styles = StyleSheet.create({
     color: Colors.secondary,
   },
   gridContainer: {
-    padding: Spacing.lg,
+    padding: Spacing.md,
     paddingBottom: 100,
   },
   gridRow: {
     justifyContent: "space-between",
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
   gridCard: {
-    width: (width - Spacing.lg * 2 - Spacing.md) / 2,
+    width: (width - Spacing.md * 2 - Spacing.sm) / 2,
   },
   gridImage: {
     width: "100%",
     height: 180,
     backgroundColor: Colors.lightGray,
     marginBottom: Spacing.sm,
-    borderRadius: 12,
+    borderRadius: 0,
   },
   gridInfo: {
     paddingHorizontal: 2,
@@ -580,7 +852,7 @@ const styles = StyleSheet.create({
   comprarButtonSmall: {
     backgroundColor: Colors.primary,
     paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 0,
     alignItems: "center",
     marginTop: Spacing.sm,
   },

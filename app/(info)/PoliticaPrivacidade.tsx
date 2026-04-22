@@ -1,10 +1,10 @@
 /**
- * FAST - Termos e Condições
- * Tela com texto longo corrido sobre os termos de uso
+ * FAST - Politica de Privacidade
+ * Tela com informacoes sobre tratamento de dados pessoais.
  */
 
 import { Colors, FontSizes, Spacing } from "@/constants/theme";
-import { getTermos } from "@/services/authService";
+import { getPolitica } from "@/services/authService";
 import { Stack } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text } from "react-native";
@@ -13,49 +13,43 @@ import {
     useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-export default function TermosECondicoes() {
+export default function PoliticaPrivacidade() {
   const insets = useSafeAreaInsets();
-  const [conteudoTermos, setConteudoTermos] = useState<string>("");
+  const [conteudoPolitica, setConteudoPolitica] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchTermos = async () => {
+    const fetchPolitica = async () => {
       try {
-        const termos = await getTermos();
+        const politicas = await getPolitica();
 
-        if (!termos.length) {
-          setConteudoTermos(
-            "Os Termos e Condicoes nao estao disponiveis no momento.",
+        if (!politicas.length) {
+          setConteudoPolitica(
+            "A Politica de Privacidade nao esta disponivel no momento.",
           );
           return;
         }
 
-        const textoCombinado = termos
-          .map((item) => {
-            const titulo = item.titulo?.trim();
-            const texto = item.texto_termo?.trim();
-
-            if (titulo && texto) {
-              return `${titulo}\n${texto}`;
-            }
-
-            return texto || titulo || "";
-          })
-          .filter((parte) => parte.length > 0)
+        const descricaoCombinada = politicas
+          .map((item) => item.descricao?.trim() || "")
+          .filter((item) => item.length > 0)
           .join("\n\n");
 
-        setConteudoTermos(
-          textoCombinado || "Os Termos e Condicoes nao estao disponiveis.",
+        setConteudoPolitica(
+          descricaoCombinada ||
+            "A Politica de Privacidade nao esta disponivel no momento.",
         );
       } catch (error) {
-        console.error("Erro ao carregar termos:", error);
-        setConteudoTermos("Nao foi possivel carregar os Termos e Condicoes.");
+        console.error("Erro ao carregar politica:", error);
+        setConteudoPolitica(
+          "Nao foi possivel carregar a Politica de Privacidade.",
+        );
       } finally {
         setLoading(false);
       }
     };
 
-    fetchTermos();
+    fetchPolitica();
   }, []);
 
   return (
@@ -63,7 +57,7 @@ export default function TermosECondicoes() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: "TERMOS E CONDIÇÕES",
+          headerTitle: "POLITICA DE PRIVACIDADE",
           headerTitleStyle: styles.headerTitle,
           headerStyle: styles.header,
           headerTintColor: Colors.primary,
@@ -81,13 +75,13 @@ export default function TermosECondicoes() {
           ]}
           showsVerticalScrollIndicator={true}
         >
-          <Text style={styles.title}>TERMOS E CONDIÇÕES</Text>
+          <Text style={styles.title}>POLITICA DE PRIVACIDADE</Text>
 
           <Text style={styles.text}>
-            {loading ? "A carregar termos..." : conteudoTermos}
+            {loading ? "A carregar politica..." : conteudoPolitica}
           </Text>
 
-          <Text style={styles.lastUpdate}>Última atualização: Março 2026</Text>
+          <Text style={styles.lastUpdate}>Ultima atualizacao: Abril 2026</Text>
         </ScrollView>
       </SafeAreaView>
     </>

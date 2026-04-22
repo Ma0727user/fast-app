@@ -3,20 +3,23 @@
  * Lista de itens, resumo financeiro e botão de checkout
  */
 
+import { Toast } from "@/components/Toast";
 import { Button } from "@/components/ui/Button";
 import { Colors, FontSizes, formatPrice, Spacing } from "@/constants/theme";
+import { getStoreData } from "@/services/authService";
 import { AuthError, salvarCarrinho } from "@/services/carrinhoService";
 import { useStore } from "@/store/useStore";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Image,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -33,31 +36,54 @@ export default function CarrinhoScreen() {
     getCartTotal,
   } = useStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastVariant, setToastVariant] = useState<
+    "success" | "error" | "warning" | "info"
+  >("warning");
+  const [toastMessage, setToastMessage] = useState("");
 
-  // Debug: verificar estado da autenticação
-  console.log("[CarrinhoScreen] user:", user);
-  console.log("[CarrinhoScreen] isAuthenticated:", isAuthenticated);
+  const showToast = (
+    variant: "success" | "error" | "warning" | "info",
+    message: string,
+  ) => {
+    setToastVariant(variant);
+    setToastMessage(message);
+    setToastVisible(true);
+  };
 
-  // Calcular subtotal
+  // IVA dinâmico da API /dadosloja
+  const [ivaPercentagem, setIvaPercentagem] = useState(0);
+
+  useEffect(() => {
+    getStoreData()
+      .then((data) => {
+        if (data) setIvaPercentagem(data.iva_percentagem || 0);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Calcular subtotal (taxa de entrega será definida em DadosEntregaScreen)
   const subtotal = getCartTotal();
-  const iva = Math.round(subtotal * 0.14);
-  const taxaEntrega = 200; // Taxa fixa de entrega
-  const total = subtotal + iva + taxaEntrega;
+  const iva = Math.round(subtotal * (ivaPercentagem / 100));
+  const total = subtotal + iva;
 
   // Função para salvar o carrinho no backend
   const handleFinalizar = async () => {
     // Verificar autenticação usando user E isAuthenticated
     if (!user || !isAuthenticated) {
-      alert("Precisa estar logado para finalizar a encomenda");
+      showToast(
+        "warning",
+        "Precisas estar logado para finalizar a compra. Entra ou cria uma conta!",
+      );
+      setTimeout(() => router.push("/login"), 2000);
       return;
     }
 
-    // Log para debug do ID do usuário
-    console.log("[CarrinhoScreen] ID do usuário:", user.id);
-    console.log("[CarrinhoScreen] Nome do usuário:", user.name);
-
     if (cart.length === 0) {
-      alert("O carrinho está vazio");
+      showToast(
+        "info",
+        "O teu carrinho está vazio. Adiciona produtos primeiro!",
+      );
       return;
     }
 
@@ -80,7 +106,8 @@ export default function CarrinhoScreen() {
       const userId = parseInt(user.id, 10);
       if (isNaN(userId) || userId <= 0) {
         console.error("[CarrinhoScreen] ID do usuário inválido:", user.id);
-        alert("Erro: ID de usuário inválido. Faça login novamente.");
+        showToast("error", "Sessão inválida. Faz login novamente.");
+        setTimeout(() => router.push("/login"), 2000);
         return;
       }
 
@@ -90,7 +117,7 @@ export default function CarrinhoScreen() {
         itensAPI,
         subtotal,
         1, // idEndereco - por enquanto fixo
-        taxaEntrega,
+        0, // taxaEntrega será definida em DadosEntregaScreen
         iva,
       );
 
@@ -112,14 +139,14 @@ export default function CarrinhoScreen() {
 
       // Tratar erro de autenticação específico
       if (error instanceof AuthError) {
-        alert("Sem autorização. Faça login para continuar.");
-        router.push("/(auth)/LoginScreen");
+        showToast("warning", "Precisas de fazer login para continuar.");
+        setTimeout(() => router.push("/login"), 2000);
         return;
       }
 
       // Em caso de erro, ainda assim permite continuar para checkout
-      // O carrinho será salvo novamente na tela de resumo
-      alert(
+      showToast(
+        "info",
         "Aviso: erro ao salvar carrinho. A encomenda será processada normalmente.",
       );
       router.push("/(checkout)/DadosEntregaScreen");
@@ -179,12 +206,25 @@ export default function CarrinhoScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Image
-          source={require("@/assets/images/fast-logo.png")}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+        </TouchableOpacity>
         <Text style={styles.title}>CARRINHO</Text>
+        {isAuthenticated && (
+          <TouchableOpacity
+            onPress={() => router.push("/(tabs)/NotificacoesScreen")}
+            style={styles.notificationButton}
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={24}
+              color={Colors.primary}
+            />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Lista de Itens */}
@@ -208,13 +248,15 @@ export default function CarrinhoScreen() {
             <Text style={styles.resumoLabel}>Subtotal</Text>
             <Text style={styles.resumoValue}>{formatPrice(subtotal)}</Text>
           </View>
-          <View style={styles.resumoRow}>
-            <Text style={styles.resumoLabel}>IVA (14%)</Text>
-            <Text style={styles.resumoValue}>{formatPrice(iva)}</Text>
-          </View>
+          {ivaPercentagem > 0 && (
+            <View style={styles.resumoRow}>
+              <Text style={styles.resumoLabel}>IVA ({ivaPercentagem}%)</Text>
+              <Text style={styles.resumoValue}>{formatPrice(iva)}</Text>
+            </View>
+          )}
           <View style={styles.resumoRow}>
             <Text style={styles.resumoLabel}>Taxa de Entrega</Text>
-            <Text style={styles.resumoValue}>{formatPrice(taxaEntrega)}</Text>
+            <Text style={styles.resumoValue}>Definida na entrega</Text>
           </View>
           <View style={[styles.resumoRow, styles.resumoTotal]}>
             <Text style={styles.totalLabel}>Total</Text>
@@ -239,6 +281,14 @@ export default function CarrinhoScreen() {
 
       {/* Padding bottom para safe area */}
       <View style={{ height: 60 }} />
+
+      {/* Toast Snackbar */}
+      <Toast
+        visible={toastVisible}
+        variant={toastVariant}
+        message={toastMessage}
+        onHide={() => setToastVisible(false)}
+      />
     </View>
   );
 }
@@ -249,8 +299,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
+  },
+  backButton: {
+    padding: Spacing.xs,
+  },
+  notificationButton: {
+    padding: Spacing.xs,
   },
   logo: {
     width: 100,
@@ -283,13 +342,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: Colors.lightGray,
-    borderRadius: 12,
+    borderRadius: 0,
   },
   itemImage: {
     width: 80,
     height: 100,
     backgroundColor: Colors.lightGray,
-    borderRadius: 8,
+    borderRadius: 0,
   },
   itemInfo: {
     flex: 1,

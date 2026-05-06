@@ -12,6 +12,7 @@
     "eas:build:android:aab": "eas build -p android",
     "eas:build:android:apk": "eas build -p android --profile preview",
     "eas:build:android:dev": "eas build --profile development --platform android",
+    "android:submit": "eas submit -p android",
     "lint": "expo lint"
   },
   "dependencies": {
